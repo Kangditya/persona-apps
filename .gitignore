@@ -1,0 +1,25 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# JavaScript
+node_modules/
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Go
+apps/api/bin/
+apps/api/coverage.out
+
+# IDE
+.idea/
+.vscode/
+.zed/
+.DS_Store
+
+# Local infrastructure
+postgres-data/
+tmp/
