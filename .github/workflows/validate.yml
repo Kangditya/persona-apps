@@ -1,0 +1,51 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+      - name: Verify Go formatting
+        working-directory: apps/api
+        run: test -z "$(gofmt -l .)"
+      - name: Vet Go API
+        working-directory: apps/api
+        run: go vet ./...
+      - name: Test Go API
+        working-directory: apps/api
+        run: go test ./...
+      - name: Build Go API
+        working-directory: apps/api
+        run: go build ./...
+
+      - run: docker compose -f infrastructure/compose.yaml config
+      - run: docker build -f apps/api/Dockerfile apps/api

@@ -9,6 +9,7 @@ dist/
 coverage/
 .turbo/
 *.tsbuildinfo
+.vite/
 
 # Go
 apps/api/bin/

@@ -1,0 +1,13 @@
+{
+  "name": "@persona-apps/typescript-config",
+  "version": "0.0.0",
+  "private": true,
+  "files": [
+    "*.json"
+  ],
+  "exports": {
+    "./base.json": "./base.json",
+    "./library.json": "./library.json",
+    "./vite-react.json": "./vite-react.json"
+  }
+}

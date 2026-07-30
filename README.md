@@ -1,44 +1,61 @@
-# Brand Commerce
+# Persona Apps
 
-Monorepo foundation for a future single-brand commerce platform
-combining:
-
-- back-office operations;
-- point of sale;
-- public storefront;
-- shared catalogue and inventory.
+Initial monorepo bootstrap for a future single-brand commerce platform with
+employee operations, point of sale, and a public storefront.
 
 ## Current status
 
-Initial architecture and repository bootstrap.
-
-The following are not implemented:
+This repository contains application shells, shared tooling, a Go API shell,
+and local PostgreSQL infrastructure. It does not yet implement:
 
 - authentication;
-- product catalogue;
+- catalogue;
 - inventory;
 - POS checkout;
 - customer ordering;
 - payment processing;
+- billing;
 - production deployment.
 
 ## Applications
 
-- `apps/operations-web`
-- `apps/storefront-web`
-- `apps/api`
+- `apps/operations-web`: employee-facing operations shell;
+- `apps/storefront-web`: public storefront shell;
+- `apps/api`: Go modular-monolith shell.
 
-## Local requirements
+## Requirements
 
-- Node.js
-- pnpm
-- Go
-- Docker with Docker Compose
-- Git
+- Node.js 24 or newer;
+- pnpm 10.30.0;
+- Go 1.26 or newer;
+- Docker with Docker Compose;
+- Make.
 
-## Development
+## Local setup
 
 ```bash
-pnpm install
-docker compose -f infrastructure/compose.yaml up -d postgres
+cp .env.example .env
+make install
+make infra-up
 make dev
+```
+
+The API listens on `http://localhost:8080`; PostgreSQL is exposed on port
+`5433` unless `POSTGRES_PORT` is overridden in `.env`.
+
+Stop PostgreSQL with:
+
+```bash
+make infra-down
+```
+
+## Validation
+
+```bash
+make validate
+```
+
+This runs formatting checks, linting, type checking, tests, builds, and Docker
+Compose configuration validation.
+
+Architecture and product boundaries are documented under `docs/`.

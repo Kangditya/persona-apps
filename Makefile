@@ -1,9 +1,12 @@
+-include .env
+export
+
 .PHONY: install dev dev-web dev-api infra-up infra-down \
-	build lint typecheck test format validate
+	build lint typecheck test format format-check compose-check validate
 
 install:
 	pnpm install
-	cd apps/api && go mod tidy
+	cd apps/api && go mod download
 
 infra-up:
 	docker compose -f infrastructure/compose.yaml up -d postgres
@@ -12,13 +15,10 @@ infra-down:
 	docker compose -f infrastructure/compose.yaml down
 
 dev:
-	pnpm dev
+	$(MAKE) -j2 dev-web dev-api
 
 dev-web:
-	pnpm --parallel \
-		--filter @brand-commerce/operations-web \
-		--filter @brand-commerce/storefront-web \
-		dev
+	pnpm dev
 
 dev-api:
 	cd apps/api && go run ./cmd/api
@@ -42,5 +42,11 @@ format:
 	pnpm format
 	cd apps/api && gofmt -w .
 
-validate: lint typecheck test build
+format-check:
+	pnpm format:check
+	test -z "$$(cd apps/api && gofmt -l .)"
+
+compose-check:
 	docker compose -f infrastructure/compose.yaml config >/dev/null
+
+validate: format-check lint typecheck test build compose-check

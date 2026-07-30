@@ -1,0 +1,6 @@
+openapi: 3.1.0
+info:
+  title: Persona Storefront API
+  version: 0.0.0
+  description: Placeholder contract for future public storefront endpoints.
+paths: {}

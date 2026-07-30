@@ -3,17 +3,20 @@
   "version": "0.0.0",
   "private": true,
   "packageManager": "pnpm@10.30.0",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "format": "turbo run format"
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "prettier": "^3.9.6",
-    "turbo": "latest",
-    "vitest": "^4.1.10"
+    "turbo": "^2.10.7"
   }
 }

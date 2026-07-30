@@ -1,0 +1,6 @@
+openapi: 3.1.0
+info:
+  title: Persona Operations API
+  version: 0.0.0
+  description: Placeholder contract for future private operations endpoints.
+paths: {}
