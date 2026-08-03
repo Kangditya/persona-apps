@@ -7,10 +7,9 @@ Initial monorepo bootstrap for a Qurban Commerce and Operations Platform.
 This repository contains React application shells, shared workspace tooling, a Go modular-monolith API shell, PostgreSQL infrastructure, placeholder OpenAPI contracts, and canonical product and architecture documentation.
 
 The documented frontend direction is React Router with Remix-style routing
-conventions and TanStack Query for future remote API/server state. The current
-Vite shells do not yet implement route modules, TanStack Query, API calls,
-caching, mutations, SSR, Remix server runtime, or server actions; no TanStack
-dependency has been added.
+conventions and TanStack Query for remote API/server state. Both Vite apps now
+include a typed transport boundary and an API-availability diagnostic only; no
+qurban business endpoint or workflow is implemented.
 
 No qurban business functionality is implemented yet. The following remain deferred:
 
@@ -182,6 +181,35 @@ HTTP_PORT=18080 make dev-api
 ```
 
 The selected API address should be used by any local frontend API configuration that needs to call the server.
+
+## Frontend API configuration
+
+Both applications read these Vite variables at build time:
+
+```text
+VITE_API_BASE_URL=/api
+VITE_API_PROXY_TARGET=http://127.0.0.1:8080
+VITE_API_PROVIDER=api
+```
+
+For local development, Vite proxies `/api` to `VITE_API_PROXY_TARGET`; the
+production value may instead be a same-origin API path or an API origin with
+an appropriate CORS policy. `api` calls the existing Go API `GET /health`
+endpoint. Set
+`VITE_API_PROVIDER=development` to use a deterministic, non-authoritative
+diagnostic adapter without credentials or a running API. It returns only
+`{ "status": "development" }`; it does not represent qurban product data.
+
+The Storefront and Operations endpoint modules remain application-owned.
+They share only `@persona-apps/api-client`, which owns request serialization,
+timeouts, cancellation, response parsing, and normalized errors. It exposes a
+`getHeaders` extension point for a future session provider, but no credentials
+are stored or logged because authentication is not yet contracted.
+
+Future public endpoints belong in `apps/storefront-web/src/api`; operations
+endpoints belong in `apps/operations-web/src/api`, using their respective
+OpenAPI contract. Add a TanStack Query key beside each endpoint and invalidate
+only affected keys after a successful, contracted mutation.
 
 Health checks:
 

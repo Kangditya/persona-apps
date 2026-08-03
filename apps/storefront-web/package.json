@@ -11,13 +11,15 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@persona-apps/api-client": "workspace:*",
+    "@tanstack/react-query": "^5.101.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router": "^8.3.0"
   },
   "devDependencies": {
-    "@tailwindcss/vite": "^4.3.3",
     "@persona-apps/typescript-config": "workspace:*",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

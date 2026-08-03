@@ -25,6 +25,60 @@ Read these canonical documents before planning or implementation:
 
 `.codex/` contains agent execution context, not canonical product or architecture documents.
 
+`.codex/TASK.md` is the active task file. Completed tasks are historical
+records under `.codex/archive/` and must not remain as the active task.
+
+## Task completion and archival
+
+After an implementation task has been completed and verification confirms that
+its objective was implemented, archive the active task before finishing:
+
+1. Add this exact marker immediately below the task's H1 title in
+   `.codex/TASK.md`:
+
+   ```text
+   ## Executed
+   ```
+
+2. Preserve the full executed task content.
+3. Create the archive directory if needed:
+
+   ```bash
+   mkdir -p .codex/archive
+   ```
+
+4. Copy the task using this canonical filename:
+
+   ```text
+   .codex/archive/YYYY-MM-DD-TASK-<h1>.md
+   ```
+
+   `<h1>` is the text after `# Task:`, normalized to lowercase hyphen-separated
+   words. Use the execution date in the local repository timezone. For example:
+
+   ```text
+   # Task: Frontend API Layers for Operations and Storefront Web
+   → .codex/archive/2026-08-03-TASK-frontend-api-layers-for-operations-and-storefront-web.md
+   ```
+
+5. Use `cp`, verify the archive copy, and then remove the active task:
+
+   ```bash
+   cp .codex/TASK.md .codex/archive/YYYY-MM-DD-TASK-<h1>.md
+   test -s .codex/archive/YYYY-MM-DD-TASK-<h1>.md
+   cmp .codex/TASK.md .codex/archive/YYYY-MM-DD-TASK-<h1>.md
+   rm .codex/TASK.md
+   ```
+
+6. Confirm `.codex/TASK.md` is absent and do not overwrite an existing archive
+   file. Stop and report a filename collision instead.
+
+Archive only after the task's acceptance criteria have been verified and the
+final review distinguishes implemented, verified, assumed, and deferred
+behavior. If verification is incomplete or the task is abandoned, keep
+`.codex/TASK.md` active and record the incomplete status. Start each new task
+with a new `.codex/TASK.md`; do not reactivate an archived task.
+
 ## Product boundaries
 
 - The initial deployment is a Go modular monolith backed by PostgreSQL.

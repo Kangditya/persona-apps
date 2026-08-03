@@ -59,6 +59,9 @@ Document responsibilities:
 | `.codex/CURRENT_STATE.md` | Current implementation state and known gaps |
 | `.codex/TASK.md` | Current implementation objective and task-specific constraints |
 
+`.codex/TASK.md` is the active task file. Completed tasks are historical
+records under `.codex/archive/` and must not remain as the active task.
+
 When documents conflict, use this priority:
 
 ```text
@@ -70,6 +73,68 @@ Current TASK
 ```
 
 Do not silently resolve material conflicts. Record them as plan risks or decision gaps.
+
+---
+
+## Task Completion and Archival
+
+When an implementation task has been completed and its verification confirms
+that the objective was implemented, update the active `.codex/TASK.md` before
+finishing the task:
+
+1. Add this exact marker immediately below the task's H1 title:
+
+   ```text
+   ## Executed
+   ```
+
+2. Preserve the complete executed task content, including its objective,
+   constraints, plan requirements, verification requirements, and final status.
+3. Create the historical directory when it does not exist:
+
+   ```bash
+   mkdir -p .codex/archive
+   ```
+
+4. Copy the executed task into the archive using the canonical filename:
+
+   ```text
+   YYYY-MM-DD-TASK-<h1>.md
+   ```
+
+   `<h1>` is the task title text after `# Task:`, normalized into a stable
+   lowercase hyphen-separated filename component. For example:
+
+   ```text
+   # Task: Frontend API Layers for Operations and Storefront Web
+   → .codex/archive/2026-08-03-TASK-frontend-api-layers-for-operations-and-storefront-web.md
+   ```
+
+   Use the execution date in the local repository timezone. The archived file
+   must retain the `## Executed` marker.
+
+5. Use `cp` to create the archive copy, verify that the copy exists and matches
+   the active task, then remove the active task file:
+
+   ```bash
+   cp .codex/TASK.md .codex/archive/YYYY-MM-DD-TASK-<h1>.md
+   test -s .codex/archive/YYYY-MM-DD-TASK-<h1>.md
+   cmp .codex/TASK.md .codex/archive/YYYY-MM-DD-TASK-<h1>.md
+   rm .codex/TASK.md
+   ```
+
+6. Confirm that `.codex/TASK.md` is absent and that the archived filename is
+   unique. Do not overwrite an existing archive; choose a corrected title or
+   stop and report the collision.
+
+Do not archive a task merely because code was changed. Archive only after the
+implementation has been verified against the task's acceptance criteria and
+the final review distinguishes implemented, verified, assumed, and deferred
+behavior. If verification is incomplete or the task is abandoned, leave it as
+the active `.codex/TASK.md` and record the incomplete status instead.
+
+When starting a new implementation task, create a new `.codex/TASK.md` from
+the approved objective. Do not edit an archived task back into an active task.
 
 ---
 
@@ -267,7 +332,9 @@ Agent operating context:
 .codex/
 ├── AGENTS.md
 ├── CURRENT_STATE.md
-└── TASK.md
+├── TASK.md                 # active task only
+└── archive/                # executed task records
+    └── YYYY-MM-DD-TASK-<h1>.md
 ```
 
 Do not create canonical product or architecture documents under `.codex/`.
