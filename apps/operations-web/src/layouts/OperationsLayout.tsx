@@ -3,9 +3,10 @@ import { NavLink, Outlet } from "react-router";
 import { paths } from "../routes/paths";
 
 const links = [
-  [paths.login, "Login"],
-  [paths.management, "Management"],
-  [paths.pos, "Point of sale"],
+  [paths.operatorLogin, "Operator Login"],
+  [paths.eventDashboard, "Event Dashboard"],
+  [paths.purchasing, "Purchasing"],
+  [paths.paymentVerification, "Payment Verification"],
 ] as const;
 
 export function OperationsLayout() {
@@ -16,7 +17,7 @@ export function OperationsLayout() {
           aria-label="Operations navigation"
           className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-4"
         >
-          <strong className="mr-auto">Persona Operations</strong>
+          <strong className="mr-auto">Qurban Operations</strong>
           {links.map(([to, label]) => (
             <NavLink
               key={to}

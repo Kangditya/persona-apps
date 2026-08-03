@@ -1,13 +1,9 @@
-# Agent Context: Architecture Notes
-
-> Canonical architecture: `docs/ARCHITECTURE.md`. This file is retained only as execution context and must not diverge from the canonical document.
-
-
+# Architecture
 
 ## Qurban Commerce and Operations Platform
 
-**Status:** Initial architecture baseline
-**Repository:** `Kangditya/persona-apps`
+**Status:** Initial architecture baseline  
+**Repository:** `Kangditya/persona-apps`  
 **Architecture style:** Monorepo with web applications and a Go modular monolith
 
 ---
@@ -1018,3 +1014,89 @@ Recommended next architecture work:
 9. add operations dashboard projections after transactional records exist.
 
 This sequence builds executable product capability while preserving the option to refine Figma flows and operational requirements.
+
+---
+
+## 26. Capability-to-Module Alignment
+
+The product capability map is not a direct one-to-one folder mandate, but it defines the expected backend ownership boundaries.
+
+```text
+Product Capability              Backend Module
+────────────────────────────────────────────────
+Storefront                      transport/public + frontend
+Purchasing                      purchasing
+Party & Participant             identity + participant
+Payment & Funding               payment + saving + giveaway
+Livestock                       livestock
+Allocation                      allocation
+Event Operations                event + slaughter
+Distribution                    distribution
+Identity & Access               identity + platform/auth
+Administration & Reporting      reporting + operations transport
+```
+
+### Rules
+
+- A screen or dashboard is not automatically a domain module.
+- Integration names such as `PaymentGateway` must remain adapter-level concepts.
+- `ShoppingCart` is not a required aggregate until multi-offering checkout is confirmed.
+- `Customer` must not replace role-specific party relationships.
+- `Inventory` must not be used as the primary livestock abstraction.
+- `OrderFulfillment` must not hide livestock allocation, slaughter, or distribution boundaries.
+
+---
+
+## 27. Canonical Product Documentation
+
+The architecture now depends on four canonical documents:
+
+```text
+docs/
+├── PRD.md
+├── PRODUCT_MAP.md
+├── ARCHITECTURE.md
+└── DECISIONS.md
+```
+
+Their responsibilities are:
+
+| Document          | Responsibility                                                         |
+| ----------------- | ---------------------------------------------------------------------- |
+| `PRD.md`          | Product goals, actors, requirements, rules, and success criteria       |
+| `PRODUCT_MAP.md`  | Capability hierarchy, application mapping, roadmap, and open questions |
+| `ARCHITECTURE.md` | Technical structure, boundaries, runtime, data, and integration design |
+| `DECISIONS.md`    | Accepted and superseded architectural decisions                        |
+
+`PRODUCT_MAP.md` is the source of truth for product capability decomposition. It must not be replaced by frontend navigation structure.
+
+---
+
+## 28. Delivery by Vertical Slice
+
+Implementation should proceed through vertical slices rather than completing one technical layer across the entire product.
+
+Example first slice:
+
+```text
+Event
+→ Offering
+→ Common Purchase
+→ Payment Verification
+→ Sohibul Qurban Activation
+→ Operations Read Model
+```
+
+Each vertical slice should include:
+
+- domain model;
+- application commands and queries;
+- persistence;
+- public or operations API;
+- frontend workflow where applicable;
+- authorization;
+- audit coverage;
+- tests;
+- observability.
+
+This approach validates domain boundaries before expanding them.

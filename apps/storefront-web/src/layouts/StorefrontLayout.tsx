@@ -3,9 +3,9 @@ import { NavLink, Outlet } from "react-router";
 import { paths } from "../routes/paths";
 
 const links = [
-  [paths.home, "Home"],
-  [paths.products, "Products"],
-  [paths.cart, "Cart"],
+  [paths.home, "Event Home"],
+  [paths.offerings, "Offerings"],
+  [paths.purchaseTracking, "Purchase Tracking"],
 ] as const;
 
 export function StorefrontLayout() {
@@ -16,7 +16,7 @@ export function StorefrontLayout() {
           aria-label="Storefront navigation"
           className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-4"
         >
-          <strong className="mr-auto">Persona Storefront</strong>
+          <strong className="mr-auto">Qurban Storefront</strong>
           {links.map(([to, label]) => (
             <NavLink
               key={to}

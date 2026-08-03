@@ -1,5 +1,5 @@
 export const paths = {
   home: "/",
-  products: "/products",
-  cart: "/cart",
+  offerings: "/offerings",
+  purchaseTracking: "/purchase-tracking",
 } as const;

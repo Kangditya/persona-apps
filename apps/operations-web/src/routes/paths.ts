@@ -1,5 +1,6 @@
 export const paths = {
-  login: "/login",
-  management: "/management",
-  pos: "/pos",
+  operatorLogin: "/operator-login",
+  eventDashboard: "/event-dashboard",
+  purchasing: "/purchasing",
+  paymentVerification: "/payment-verification",
 } as const;

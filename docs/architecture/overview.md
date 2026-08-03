@@ -1,19 +1,5 @@
-# Architecture Overview
+# Architecture Overview Pointer
 
-Persona Apps is a monorepo containing two React applications and one Go
-modular monolith backed by PostgreSQL.
+The canonical architecture document is `docs/ARCHITECTURE.md`.
 
-```text
-Operations web ─┐
-                ├─> Go API ─> PostgreSQL
-Storefront web ─┘
-```
-
-Frontend URL paths and route trees are centralized within each application.
-Future backend modules will live under `apps/api/internal/modules` and follow
-transport → application → domain dependency direction, with infrastructure
-implementing domain interfaces.
-
-OpenAPI contracts are separated for private operations and public storefront
-consumers. Generated clients will be introduced only after meaningful
-endpoints exist.
+The repository preserves a monorepo with React storefront and operations applications, a Go modular monolith, PostgreSQL, and separate public and operations OpenAPI contracts. This file is a navigation pointer and must not become a competing architecture source.

@@ -1,0 +1,18 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/persona-api ./cmd/api"
+  entrypoint = ["./tmp/persona-api"]
+  delay = 500
+  exclude_dir = ["tmp", "vendor"]
+  exclude_regex = ["_test\\.go"]
+  include_ext = ["go"]
+  kill_delay = "1s"
+  send_interrupt = true
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true

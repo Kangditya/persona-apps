@@ -1,9 +1,9 @@
 import { Route, Routes } from "react-router";
 
 import { StorefrontLayout } from "../layouts/StorefrontLayout";
-import { CartPage } from "../pages/CartPage";
 import { HomePage } from "../pages/HomePage";
-import { ProductsPage } from "../pages/ProductsPage";
+import { OfferingsPage } from "../pages/OfferingsPage";
+import { PurchaseTrackingPage } from "../pages/PurchaseTrackingPage";
 import { paths } from "./paths";
 
 export function AppRoutes() {
@@ -11,8 +11,11 @@ export function AppRoutes() {
     <Routes>
       <Route element={<StorefrontLayout />}>
         <Route path={paths.home} element={<HomePage />} />
-        <Route path={paths.products} element={<ProductsPage />} />
-        <Route path={paths.cart} element={<CartPage />} />
+        <Route path={paths.offerings} element={<OfferingsPage />} />
+        <Route
+          path={paths.purchaseTracking}
+          element={<PurchaseTrackingPage />}
+        />
       </Route>
     </Routes>
   );

@@ -1,8 +1,8 @@
-# Product Scope
+# Product Scope Pointer
 
-The intended product combines employee operations, point of sale, and a public
-storefront for organisations that initially operate one brand.
+The canonical product requirements and capability scope are maintained in:
 
-The current milestone is repository bootstrap only. Authentication, catalogue,
-inventory, checkout, ordering, payments, billing, and production deployment
-are outside its scope.
+- `docs/PRD.md`
+- `docs/PRODUCT_MAP.md`
+
+This file remains only as a navigation pointer. The repository currently contains bootstrap shells and does not yet implement qurban business functionality.
