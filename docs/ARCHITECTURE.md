@@ -732,7 +732,11 @@ Webhook handlers must:
 
 ## 16. Frontend Architecture
 
-Both web applications use React, TypeScript, Vite, React Router, Tailwind CSS, Vitest, and the shared monorepo tooling already established in the repository.
+Both web applications use React, TypeScript, Vite, React Router with
+Remix-style routing conventions, Tailwind CSS, Vitest, and the shared monorepo
+tooling already established in the repository. TanStack Query is the approved
+server-state library when a future vertical slice introduces real API data; it
+is not yet installed or configured.
 
 Recommended source structure:
 
@@ -756,6 +760,14 @@ src/
 - organize by feature rather than technical file type;
 - generated or centralized API client;
 - server state kept distinct from local UI state;
+- use Remix-style route hierarchy, layouts, route boundaries, navigation state,
+  and declared route-data requirements through React Router while retaining the
+  Vite SPA runtime;
+- keep centralized `src/routes/paths.ts` and `src/routes/routes.tsx` as the
+  application-owned registry; feature routes register explicitly rather than
+  scattering path strings;
+- let TanStack Query own remote request lifecycle, cache updates, and
+  invalidation after successful API commands once it is implemented;
 - no duplicated domain validation as authoritative logic;
 - route-level access control for operations;
 - accessible components;
@@ -763,6 +775,22 @@ src/
 - test critical workflows at component and end-to-end levels.
 
 A shared UI package should contain stable primitives, not application-specific pages.
+
+### Frontend Data Boundaries
+
+- React Router owns navigation and route composition; it does not introduce a
+  Remix server runtime, server-side rendering, or server actions in the current
+  Vite SPA topology.
+- TanStack Query owns only remote API/server state. Forms and transient UI
+  state remain feature or component-local unless a separate decision changes
+  that boundary.
+- Query keys use stable public identifiers and explicit event context. Public
+  and operations data must use their respective OpenAPI contracts and DTOs.
+- Query cache data is never transactional truth. Payment state, quota,
+  allocation capacity, saving balance, and queue position are revalidated by
+  the Go API for every contested command.
+- A `409 Conflict` response is rendered as a conflict state; the frontend must
+  not resolve it from stale cache data or override backend authorization.
 
 ---
 
@@ -774,6 +802,9 @@ Initial approach:
 
 - use HTTP caching for public static or slowly changing content;
 - use in-process caching only for safe configuration;
+- use TanStack Query cache only as a client-side view of remote data once it is
+  implemented, with invalidation after successful commands and explicit stale
+  state handling;
 - avoid caching contested balances, quota, payment state, allocation capacity, or queue position as authoritative data;
 - introduce Redis only when a concrete use case requires distributed cache, rate limiting, session storage, or short-lived coordination.
 

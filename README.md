@@ -6,6 +6,12 @@ Initial monorepo bootstrap for a Qurban Commerce and Operations Platform.
 
 This repository contains React application shells, shared workspace tooling, a Go modular-monolith API shell, PostgreSQL infrastructure, placeholder OpenAPI contracts, and canonical product and architecture documentation.
 
+The documented frontend direction is React Router with Remix-style routing
+conventions and TanStack Query for future remote API/server state. The current
+Vite shells do not yet implement route modules, TanStack Query, API calls,
+caching, mutations, SSR, Remix server runtime, or server actions; no TanStack
+dependency has been added.
+
 No qurban business functionality is implemented yet. The following remain deferred:
 
 - Qurban Event and Offering Catalogue;

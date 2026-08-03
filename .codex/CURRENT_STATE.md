@@ -97,10 +97,16 @@ Current frontend stack:
 - Vite;
 - React;
 - TypeScript;
-- React Router;
+- React Router with documented Remix-style routing conventions;
+- TanStack Query as the approved future remote API/server-state library;
 - Tailwind CSS;
 - Oxlint;
 - Vitest.
+
+The current application shells do not yet implement route modules, a TanStack
+Query provider, queries, mutations, API calls, or cache behavior. No TanStack
+package is installed or declared until a concrete frontend vertical slice needs
+remote data.
 
 Local development behavior:
 
@@ -170,6 +176,8 @@ Implemented as placeholders or shells:
 - shared UI package shell.
 
 No meaningful qurban API contract has been implemented.
+The separate public and operations OpenAPI contracts remain endpoint-free; no
+route data requirement or query key is implemented yet.
 
 ### Documentation
 
@@ -181,6 +189,10 @@ Implemented or revised:
 - architecture decision register;
 - repository agent instructions;
 - current-state tracking.
+
+The architecture artifacts document React Router with Remix-style routing
+conventions and future TanStack Query server-state ownership. This is an
+accepted direction, not a runtime implementation.
 
 ---
 
@@ -427,13 +439,20 @@ Current replacements:
 
 Last recorded full verification: **2026-08-03**
 
-The product and architecture realignment has been verified with:
+The product/architecture and frontend-artifact alignment has been verified
+with:
 
 ```bash
 make validate
 ```
 
-This passed formatting checks, frontend linting, TypeScript type checking, frontend tests, frontend builds, Go formatting, Go vet, Go tests, Go build, and Docker Compose configuration validation.
+This passed formatting checks, frontend linting, TypeScript type checking,
+frontend tests, frontend builds, Go formatting, Go vet, Go tests, Go build,
+and Docker Compose configuration validation.
+
+The verification confirms artifact consistency only. It does not verify
+Remix-style route modules, TanStack Query integration, API calls, caching, or
+any qurban business behavior because none is implemented.
 
 The API foundation remains limited to `/health`, PostgreSQL-backed `/ready`, and graceful shutdown. No qurban business capability has been implemented.
 
@@ -506,41 +525,28 @@ These rules must not be invented during implementation.
 
 ## Current Risks
 
-1. Existing placeholder frontend routes use outdated commerce and POS terminology.
-2. README content may still describe the previous generic commerce direction.
-3. The existing OpenAPI placeholders may use outdated consumer naming or paths.
-4. `.codex/DECISIONS.md` may still exist and conflict with canonical `docs/DECISIONS.md`.
-5. Documentation files generated outside the repository still need to be copied into their canonical locations.
-6. The Go backend has no module registration pattern yet.
-7. No migration tool has been selected.
-8. No HTTP router decision has been finalized.
-9. No authentication approach has been selected.
-10. No initial database domain model has been validated.
+1. Remix-style route modules and TanStack Query runtime integration are
+   documented but not implemented; their first use must be part of an approved
+   vertical slice with real API behavior and tests.
+2. Query-key shapes, stale-time policy, mutation invalidation, and route-data
+   requirements cannot be finalized until meaningful public and operations
+   endpoints exist.
+3. The Go backend has no module registration pattern yet.
+4. No migration tool has been selected.
+5. No HTTP router decision has been finalized.
+6. No authentication approach has been selected.
+7. No initial database domain model has been validated.
 
 ---
 
 ## Recommended Next Task
 
-Create one reviewed repository-alignment task before implementing business functionality.
+Define and approve the first business vertical slice before adding routing or
+server-state runtime code. That slice must identify its route modules, the
+applicable separate OpenAPI contract, and the smallest required
+`@tanstack/react-query` integration.
 
-Recommended scope:
-
-```text
-Documentation and shell alignment
-```
-
-It should:
-
-1. move canonical documents into `docs/`;
-2. move or update repository `AGENTS.md`;
-3. update `.codex/CURRENT_STATE.md`;
-4. remove or supersede `.codex/DECISIONS.md`;
-5. update README product language;
-6. replace outdated placeholder route terminology;
-7. validate canonical OpenAPI file locations;
-8. run full repository verification.
-
-After repository alignment, define the first vertical business slice:
+The recommended first slice remains:
 
 ```text
 Qurban Event

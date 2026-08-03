@@ -130,7 +130,7 @@ Both frontend applications use:
 - Vite;
 - React;
 - TypeScript;
-- React Router.
+- React Router with Remix-style routing conventions.
 
 ### Rationale
 
@@ -149,6 +149,9 @@ Vite provides:
 - Public SEO requirements must be reassessed before they become critical.
 - Server rendering should not be introduced without a documented requirement.
 - Backend contracts remain independent of frontend framework details.
+- Remix-style route hierarchy, layouts, route boundaries, navigation state, and
+  route-data requirements are designed in the frontend while runtime delivery
+  remains a Vite-served SPA. This does not adopt a Remix server runtime.
 
 ---
 
@@ -176,6 +179,9 @@ Central route ownership prevents duplicated path strings and inconsistent author
 - URL builders must use centralized path definitions.
 - Route guards must not replace backend authorization.
 - Feature modules may contribute routes through explicit registration.
+- Route modules must declare their public or operations API-surface ownership.
+- Route data requirements must not expose operations-only DTOs through
+  Storefront.
 
 ---
 
@@ -1093,3 +1099,36 @@ Event
 - Avoid implementing all database tables or all frontend shells before one complete flow works.
 - Every slice must include authorization, audit, validation, and tests appropriate to its risk.
 - Phase ordering may change based on discovery, but capability boundaries remain stable.
+
+---
+
+## ADR-039: Use TanStack Query for frontend server state
+
+**Status:** Accepted
+
+Use `@tanstack/react-query` for remote API/server state when the first
+frontend vertical slice introduces real API reads or commands. React Router
+continues to own navigation; TanStack Query owns request lifecycle, caching,
+invalidation, and explicit server-state rendering.
+
+### Rationale
+
+The two applications need consistent handling for asynchronous API data
+without treating component state or browser caches as domain truth. TanStack
+Query provides a focused boundary between remote state and local UI state
+while keeping the Go API authoritative.
+
+### Consequences
+
+- This decision does not add a dependency or runtime provider until a concrete
+  vertical slice needs remote data.
+- Query keys must use stable public API identifiers and explicit event context.
+- Successful commands invalidate or update relevant query data only after a
+  successful API response; cache invalidation is not a correctness mechanism.
+- The UI must render loading, empty, error, stale, and `409 Conflict` states
+  explicitly.
+- Cache data must not authoritatively determine payment status, quota,
+  allocation capacity, saving balance, or queue position; contested operations
+  are always revalidated by the Go API.
+- This decision does not adopt TanStack Router, Table, Form, or other TanStack
+  libraries.

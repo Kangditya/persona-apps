@@ -24,4 +24,7 @@ apps/api/coverage.out
 
 # Local infrastructure
 postgres-data/
-tmp/
+tmp
+
+# AI Secrets-Local
+graphify-out

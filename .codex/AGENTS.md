@@ -431,7 +431,9 @@ Use:
 - Vite;
 - React;
 - TypeScript;
-- React Router;
+- React Router with Remix-style routing conventions;
+- TanStack Query for remote API/server state when a concrete vertical slice
+  requires it;
 - Tailwind CSS;
 - Vitest;
 - PWA-ready structure only when required.
@@ -457,7 +459,9 @@ Use:
 - Vite;
 - React;
 - TypeScript;
-- React Router;
+- React Router with Remix-style routing conventions;
+- TanStack Query for remote API/server state when a concrete vertical slice
+  requires it;
 - Tailwind CSS;
 - Vitest.
 
@@ -535,13 +539,24 @@ src/
 Rules:
 
 1. Organize business UI by feature.
-2. Keep server state separate from local UI state.
-3. Do not place business rules inside route definitions.
-4. Do not make frontend validation authoritative.
-5. Handle loading, empty, error, stale, and conflict states explicitly.
-6. Do not expose operations-only fields through Storefront clients.
-7. Shared UI packages contain stable primitives, not application pages.
-8. Prefer direct checkout until cart requirements are confirmed.
+2. Use React Router for Remix-style route hierarchy, layouts, route boundaries,
+   navigation state, and route-data requirements without introducing a Remix
+   server runtime, SSR, or server actions.
+3. Keep server state separate from local UI state. TanStack Query owns remote
+   request lifecycle, caching, and invalidation after successful API commands;
+   it is not yet a dependency or runtime integration.
+4. Keep `src/routes/paths.ts` and `src/routes/routes.tsx` as centralized,
+   application-owned route registries. Feature routes register explicitly.
+5. Do not place business rules inside route definitions or TanStack Query
+   callbacks.
+6. Do not make frontend validation or cached query data authoritative.
+7. Handle loading, empty, error, stale, and `409 Conflict` states explicitly.
+8. Do not expose operations-only fields through Storefront clients.
+9. Shared UI packages contain stable primitives, not application pages.
+10. Prefer direct checkout until cart requirements are confirmed.
+11. Revalidate contested state with the Go API; cache data does not determine
+    payment status, quota, allocation capacity, saving balance, or queue
+    position.
 
 ---
 
