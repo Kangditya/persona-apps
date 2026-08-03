@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router";
 
 import { paths } from "../routes/paths";
+import { OperationsPwaStatus } from "../pwa/OperationsPwaStatus";
 
 const links = [
   [paths.operatorLogin, "Operator Login"],
@@ -31,6 +32,7 @@ export function OperationsLayout() {
           ))}
         </nav>
       </header>
+      <OperationsPwaStatus />
       <main className="mx-auto max-w-5xl px-6 py-16">
         <Outlet />
       </main>

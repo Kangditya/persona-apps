@@ -182,6 +182,33 @@ HTTP_PORT=18080 make dev-api
 
 The selected API address should be used by any local frontend API configuration that needs to call the server.
 
+## Shared UI and PWA foundation
+
+Both applications consume the domain-agnostic `@persona-apps/ui` workspace
+package. It owns Tailwind v4 semantic tokens and editable shadcn-style atoms,
+molecules, and patterns. Native HTML owns simple controls; React Aria
+Components owns the composite dialog, menu, and sheet behavior. The package has
+no routes, API access, authentication, environment reads, or qurban rules.
+
+Each application also has an independent production PWA configuration:
+
+| App        | Manifest identity                     | Scope                        | Offline policy       |
+| ---------- | ------------------------------------- | ---------------------------- | -------------------- |
+| Storefront | Qurban Storefront (`/storefront-web`) | `/` on the storefront origin | immutable shell only |
+| Operations | Qurban Operations (`/operations-web`) | `/` on the operations origin | immutable shell only |
+
+Each manifest declares the app-owned `icon-192.svg` and `icon-512.svg` assets;
+the 512px icon is marked `maskable` and has safe centered artwork. The service
+workers precache build HTML, JavaScript, CSS, and these immutable SVG assets only.
+API requests, authentication, participant, financial, operational, and
+mutation data have no runtime cache or replay path. Offline mode shows an
+unavailable notice; it never presents cached records as authoritative. Updates
+use a visible prompt and do not activate or reload automatically during work.
+
+Service workers are disabled during development. Production builds emit each
+app's manifest, icon, and worker. Keep the applications on separate origins or
+configure a distinct deployment base path before hosting them on one origin.
+
 ## Frontend API configuration
 
 Both applications read these Vite variables at build time:

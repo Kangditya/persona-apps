@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from "react-router";
 
 import { paths } from "../routes/paths";
+import { StorefrontPwaStatus } from "../pwa/StorefrontPwaStatus";
 
 const links = [
   [paths.home, "Event Home"],
@@ -32,6 +33,7 @@ export function StorefrontLayout() {
           ))}
         </nav>
       </header>
+      <StorefrontPwaStatus />
       <main className="mx-auto max-w-5xl px-6 py-16">
         <Outlet />
       </main>

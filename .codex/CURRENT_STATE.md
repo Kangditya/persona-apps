@@ -103,10 +103,14 @@ Current frontend stack:
 - Oxlint;
 - Vitest.
 
-The current application shells do not yet implement route modules, a TanStack
-Query provider, queries, mutations, API calls, or cache behavior. No TanStack
-package is installed or declared until a concrete frontend vertical slice needs
-remote data.
+The applications now include a TanStack Query provider, typed API transport
+boundaries, and a non-authoritative API-availability diagnostic. No qurban
+business queries or mutations are implemented.
+
+Both applications also consume `@persona-apps/ui`, which owns shared semantic
+tokens and accessible atoms/molecules, and have independent production PWA
+manifests and shell-only service workers. API and sensitive data remain
+network-only.
 
 Local development behavior:
 
@@ -173,7 +177,8 @@ Implemented as placeholders or shells:
 - shared workspace packages;
 - frontend TypeScript configuration;
 - API client package shell;
-- shared UI package shell.
+- shared UI package with tokens and accessible primitives;
+- application-owned PWA manifests and service-worker configuration.
 
 No meaningful qurban API contract has been implemented.
 The separate public and operations OpenAPI contracts remain endpoint-free; no
@@ -191,8 +196,8 @@ Implemented or revised:
 - current-state tracking.
 
 The architecture artifacts document React Router with Remix-style routing
-conventions and future TanStack Query server-state ownership. This is an
-accepted direction, not a runtime implementation.
+conventions and TanStack Query server-state ownership. The approved UI/API
+foundation is now runtime code; qurban business capabilities remain deferred.
 
 ---
 
@@ -450,9 +455,9 @@ This passed formatting checks, frontend linting, TypeScript type checking,
 frontend tests, frontend builds, Go formatting, Go vet, Go tests, Go build,
 and Docker Compose configuration validation.
 
-The verification confirms artifact consistency only. It does not verify
-Remix-style route modules, TanStack Query integration, API calls, caching, or
-any qurban business behavior because none is implemented.
+Frontend type checking, focused tests, linting, builds, PWA manifest output,
+and service-worker precache policy are verified. This does not verify qurban
+business behavior because none is implemented.
 
 The API foundation remains limited to `/health`, PostgreSQL-backed `/ready`, and graceful shutdown. No qurban business capability has been implemented.
 
@@ -525,9 +530,8 @@ These rules must not be invented during implementation.
 
 ## Current Risks
 
-1. Remix-style route modules and TanStack Query runtime integration are
-   documented but not implemented; their first use must be part of an approved
-   vertical slice with real API behavior and tests.
+1. Real public and operations API contracts remain endpoint-free; the frontend
+   diagnostic is not a product vertical slice.
 2. Query-key shapes, stale-time policy, mutation invalidation, and route-data
    requirements cannot be finalized until meaningful public and operations
    endpoints exist.
