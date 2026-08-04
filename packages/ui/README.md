@@ -23,6 +23,13 @@ Accessibility ownership is deliberately single-source:
   dismissal, and ARIA behavior for `Dialog`, `DropdownMenu`, and `Sheet`;
 - `PwaNotice` is presentational; applications own service-worker lifecycle.
 
+Icon convention:
+
+- use `@radix-ui/react-icons` for compact utility and control icons;
+- use `@phosphor-icons/react` for semantic, status, navigation, and qurban visuals;
+- import named icons directly for tree-shaking and size them with Tailwind (`size-3.5`, `size-4`, `size-5`, or `size-6`);
+- hide decorative icons with `aria-hidden="true"`; icon-only controls must retain an accessible name from their control or `aria-label`.
+
 Add a component by classifying it as an atom, molecule, or pattern, writing its
 accessible API and behavior owner, adding a root export, and adding a focused
 test from an application package. Keep API access, routing, authentication,
