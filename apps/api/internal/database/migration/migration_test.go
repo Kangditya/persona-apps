@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/golang-migrate/migrate/v4/source"
 )
 
 func TestDiscoverSortsAndRequiresPairs(t *testing.T) {
@@ -42,6 +44,16 @@ func TestCreateProducesNonCollidingPair(t *testing.T) {
 	}
 	if second.Version != 2 {
 		t.Fatalf("second version = %d, want 2", second.Version)
+	}
+}
+
+func TestFileSourceDriverIsRegistered(t *testing.T) {
+	driver, err := source.Open("file://" + t.TempDir())
+	if err != nil {
+		t.Fatalf("source.Open() error = %v", err)
+	}
+	if err := driver.Close(); err != nil {
+		t.Fatalf("source.Close() error = %v", err)
 	}
 }
 
