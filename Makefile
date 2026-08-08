@@ -2,7 +2,12 @@
 export
 
 .PHONY: install dev dev-web dev-storefront dev-operations dev-api infra-up infra-down \
-	build lint typecheck test format format-check compose-check validate
+	build lint typecheck test format format-check compose-check validate \
+	db-validate db-status db-version db-migrate db-migrate-steps db-rollback \
+	db-rollback-steps db-migration-create db-seed-list db-seed-status db-seed \
+	db-seed-all db-seed-reference db-seed-development db-setup
+
+DB_COMMAND := cd apps/api && go run ./cmd/db
 
 install:
 	pnpm install
@@ -68,3 +73,52 @@ compose-check:
 	docker compose -f infrastructure/compose.yaml config >/dev/null
 
 validate: format-check lint typecheck test build compose-check
+
+db-validate:
+	$(DB_COMMAND) migrate validate
+
+db-status:
+	$(DB_COMMAND) migrate status
+
+db-version:
+	$(DB_COMMAND) migrate version
+
+db-migrate:
+	$(DB_COMMAND) migrate up
+
+db-migrate-steps:
+	@test -n "$(steps)" || (printf 'usage: make db-migrate-steps steps=N\n' >&2; exit 2)
+	$(DB_COMMAND) migrate up --steps "$(steps)"
+
+db-rollback:
+	$(DB_COMMAND) migrate down --steps 1
+
+db-rollback-steps:
+	@test -n "$(steps)" || (printf 'usage: make db-rollback-steps steps=N\n' >&2; exit 2)
+	$(DB_COMMAND) migrate down --steps "$(steps)"
+
+db-migration-create:
+	@test -n "$(name)" || (printf 'usage: make db-migration-create name=NAME\n' >&2; exit 2)
+	$(DB_COMMAND) migrate create "$(name)"
+
+db-seed-list:
+	$(DB_COMMAND) seed list
+
+db-seed-status:
+	$(DB_COMMAND) seed status
+
+db-seed:
+	@test -n "$(name)" || (printf 'usage: make db-seed name=SEED_NAME\n' >&2; exit 2)
+	$(DB_COMMAND) seed run "$(name)"
+
+db-seed-all:
+	$(DB_COMMAND) seed run --all
+
+db-seed-reference:
+	$(DB_COMMAND) seed run --group reference
+
+db-seed-development:
+	$(DB_COMMAND) seed run --group development
+
+db-setup:
+	$(DB_COMMAND) setup

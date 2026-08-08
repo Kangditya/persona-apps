@@ -184,6 +184,22 @@ No meaningful qurban API contract has been implemented.
 The separate public and operations OpenAPI contracts remain endpoint-free; no
 route data requirement or query key is implemented yet.
 
+### Database lifecycle tooling
+
+Implemented:
+
+- explicit Go database CLI at `apps/api/cmd/db` using
+  `golang-migrate/migrate/v4`;
+- migration validation, status, version, up, bounded down, and skeleton
+  creation against `apps/api/migrations`;
+- separate ordered seed registry/history with development safety guards;
+- `db setup` for migrations plus reference seeds only;
+- repository Make targets for the complete normal CLI surface.
+
+The reference seed group is intentionally empty. The development group only
+contains `development.sample-event`. No migration or seed has been run against
+staging or production.
+
 ### Documentation
 
 Implemented or revised:

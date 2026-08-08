@@ -1132,3 +1132,39 @@ while keeping the Go API authoritative.
   are always revalidated by the Go API.
 - This decision does not adopt TanStack Router, Table, Form, or other TanStack
   libraries.
+
+---
+
+## ADR-040: Use an explicit Go-owned database lifecycle command
+
+**Status:** Accepted
+
+Use `golang-migrate/migrate/v4` from `apps/api/cmd/db` to execute the existing
+numbered PostgreSQL migration pairs. Keep migration execution, inspection,
+creation, and bounded rollback as explicit commands; do not run them from API
+startup.
+
+Seed execution is a separate ordered registry under
+`apps/api/internal/database/seeder`. Reference and development seeds use
+separate groups and independent `schema_seeds` history. Development seeds are
+allowed only in development/test, while staging/production `--all` selects
+reference seeds only. Rollback outside development/test requires an explicit
+`ALLOW_DESTRUCTIVE_DB_COMMANDS=true` opt-in.
+
+### Rationale
+
+The existing `NNNN_name.up.sql`/`.down.sql` files already match
+`golang-migrate`'s PostgreSQL source format. Reusing them avoids a second SQL
+engine and preserves historical migration files. Separate seed history keeps
+deterministic bootstrap data independent from schema version state.
+
+### Consequences
+
+- `schema_migrations` and PostgreSQL advisory locking provide migration state
+  and serialization.
+- `schema_seeds` records successful seed names only; changed seed definitions
+  require a new immutable name because checksums are not needed yet.
+- `db setup` applies migrations and reference seeds only.
+- Dirty-version recovery (`force`) and arbitrary navigation (`goto`) remain
+  deferred until an operational recovery policy and disposable-DB verification
+  exist.
