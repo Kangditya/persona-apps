@@ -20,7 +20,7 @@ func TestRunValidatesMigrationsAndListsSeeds(t *testing.T) {
 	if err := Run(context.Background(), []string{"migrate", "validate"}, &output, &output); err != nil {
 		t.Fatalf("validate error = %v", err)
 	}
-	if !strings.Contains(output.String(), "valid: 4 migrations") {
+	if !strings.Contains(output.String(), "valid: 5 migrations") {
 		t.Fatalf("validate output = %q", output.String())
 	}
 

@@ -8,21 +8,21 @@ No migration was applied to staging or production.
 
 ## Required report
 
-| Item                                 | Result                                                                                                                                                                                                                      |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Database engine / dialect discovered | PostgreSQL; Compose uses `postgres:18-alpine`, and Go uses `pgx/v5` with `database/sql`.                                                                                                                                    |
-| Migration framework discovered       | `golang-migrate/migrate/v4`, selected because it consumes paired SQL files and supports PostgreSQL locking/version state.                                                                                                   |
-| Existing schema reused               | None. No business tables, SQL schema, ORM, query models, seeds, or migration history exist.                                                                                                                                 |
-| New tables proposed                  | 30 tables across foundation, commerce/funding, operations, and platform integrity. See `ERD.md`.                                                                                                                            |
-| Existing tables changed              | None.                                                                                                                                                                                                                       |
-| Deferred tables / relationships      | Contacts and auth details, roles/permissions, offering composition/cart, saving policy, giveaway selection, personal slaughter, distribution entitlement/beneficiaries, documents, notifications, projections, and tenancy. |
-| Migration files created              | Eight files: four `.up.sql` and four `.down.sql` files under `apps/api/migrations/`; `0004` creates seed metadata.                                                                                                          |
-| Backfills required                   | None; no existing schema/data.                                                                                                                                                                                              |
-| Indexes added                        | Event/status/channel queues, public references, role/source lookups, history chronology, financial reconciliation, livestock/allocation/queue operations, audit targets, unpublished outbox, and idempotency expiry.        |
-| Destructive operations               | Only rollback scripts use `DROP TABLE`; up migrations are additive. No `CASCADE` is used.                                                                                                                                   |
-| Rollback coverage                    | Complete per migration unit; apply down scripts in reverse order.                                                                                                                                                           |
-| API contract impact                  | None. Both OpenAPI contracts remain placeholders.                                                                                                                                                                           |
-| Dependency impact                    | Added `golang-migrate/migrate/v4` and test-only `go-sqlmock`; frontend dependencies unchanged.                                                                                                                              |
+| Item                                 | Result                                                                                                                                                                                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Database engine / dialect discovered | PostgreSQL; Compose uses `postgres:18-alpine`, and Go uses `pgx/v5` with `database/sql`.                                                                                                                                                   |
+| Migration framework discovered       | `golang-migrate/migrate/v4`, selected because it consumes paired SQL files and supports PostgreSQL locking/version state.                                                                                                                  |
+| Existing schema reused               | None. No business tables, SQL schema, ORM, query models, seeds, or migration history exist.                                                                                                                                                |
+| New tables proposed                  | 33 tables across foundation, commerce/funding, operations, platform integrity, and Phase 1 safety. See `ERD.md`.                                                                                                                           |
+| Existing tables changed              | qurban_events, offerings, purchases, payment_records, and audit_log receive additive 0005 changes.                                                                                                                                         |
+| Deferred tables / relationships      | Contacts, roles/permissions administration, offering composition/cart, saving policy, giveaway selection, personal slaughter, distribution entitlement/beneficiaries, notifications, projections, and tenancy.                             |
+| Migration files created              | Ten files: five `.up.sql` and five `.down.sql` files under `apps/api/migrations/`; 0005 adds Phase 1 safety storage.                                                                                                                       |
+| Backfills required                   | None; no existing schema/data.                                                                                                                                                                                                             |
+| Indexes added                        | Event/status/channel queues, public references, role/source lookups, history chronology, financial reconciliation, quota/session queues, livestock/allocation/queue operations, audit targets, unpublished outbox, and idempotency expiry. |
+| Destructive operations               | Only rollback scripts use `DROP TABLE`; up migrations are additive. No `CASCADE` is used.                                                                                                                                                  |
+| Rollback coverage                    | Complete per migration unit; apply down scripts in reverse order.                                                                                                                                                                          |
+| API contract impact                  | None. Both OpenAPI contracts remain placeholders.                                                                                                                                                                                          |
+| Dependency impact                    | Added `golang-migrate/migrate/v4` and test-only `go-sqlmock`; frontend dependencies unchanged.                                                                                                                                             |
 
 ## Implemented
 
@@ -39,7 +39,11 @@ No migration was applied to staging or production.
 - `0003_operations_and_platform` defines livestock lifecycle/history,
   allocation, slaughter scheduling/execution, minimal distribution status,
   audit, outbox, and idempotency records.
-- `0004_schema_seeds` creates independent seed execution history.
+
+* `0004_schema_seeds` creates independent seed execution history.
+* `0005_mvp_commerce_safety` adds the accepted Event, Offering, intended
+* participant, quota, evidence, Purchase-token, session, and audit safeguards.
+
 - `apps/api/cmd/db` provides migration validation/status/version/up/bounded
   down/create, seed list/status/run, and setup commands.
 - `internal/database/seeder` provides ordered reference/development groups,
@@ -52,7 +56,9 @@ No migration was applied to staging or production.
 - Focused Go tests passed in `apps/api` (17 tests across 9 packages, including
   migration validation, CLI parsing, seed ordering, commit/rollback, history,
   and environment guards).
-- The migration source validates four paired files.
+
+* The migration source validates five paired files.
+
 - The first `make validate` format check failed only because the new Markdown
   files were unformatted; the files were then formatted and the later full
   validation passed all preceding format, lint, typecheck, test, and build
@@ -67,9 +73,10 @@ No migration was applied to staging or production.
 - Event-scoped tables carry `event_id`; critical cross-event references use
   composite foreign keys.
 - Unresolved product decisions remain out of the schema.
-- No migration command was run against a database.
 
-## Verification failures and blockers
+* Disposable PostgreSQL execution is recorded after the W1-03 verification run.
+
+## Historical verification blockers
 
 - `make validate` did not complete because its final Compose step could not
   start: `/bin/sh: 1: docker: not found`.
@@ -79,6 +86,17 @@ No migration was applied to staging or production.
 - The runner's filesystem validation and unit tests passed; SQL syntax and
   migration up/down behavior remain blocked on a disposable PostgreSQL
   service.
+
+## Disposable database verification
+
+- Started an isolated PostgreSQL 18 Compose project on port 55433 with a new
+  named volume.
+- Applied migrations 0001 through 0005; version is 5 and not dirty.
+- Ran the empty reference seed group twice without duplicate effects.
+- Rolled back only 0005, reapplied it, and confirmed version 5 again.
+- Inspected live constraints, foreign keys, partial indexes, evidence checks,
+  reservation guards, token hashes, and session hashes against the ERD.
+- No migration was applied to staging or production.
 
 ## Assumed
 
@@ -95,9 +113,11 @@ No migration was applied to staging or production.
 ## Deferred
 
 - Disposable PostgreSQL execution of the runner, migrations, and seed history.
-- Authentication, roles, permissions, event/location scopes, and sessions.
+
+* OIDC runtime, role/permission administration, and event/location scopes.
+
 - Offering variants, package/share composition, multi-offering checkout, and
-  availability/quota reservation policy.
+  quota command implementation.
 - Saving price locks, installment schedules, transfers/refunds policy, and
   reminders.
 - Giveaway eligibility criteria and recipient-selection workflow.
@@ -112,13 +132,12 @@ No migration was applied to staging or production.
 
 ## Remaining risks
 
-1. Migration SQL has not yet been executed against a disposable PostgreSQL
-   instance in this environment; the next verification step is an up/status/
-   seed/rollback/re-apply integration run.
+1. Verification used one empty PostgreSQL 18 database. Staging and production
+   compatibility remain unverified until deployment configuration exists.
 2. Offering and allocation rules are intentionally broad, so capacity and
    price-lock constraints will need hardening after product decisions.
-3. Authentication is unresolved; `operator_users` is only an audit/reference
-   boundary, not an authorization implementation.
+3. Authentication storage is present, but OIDC, session, CSRF, and permission
+   runtime behavior remain unimplemented.
 4. Distribution is deliberately minimal and must not be treated as a complete
    entitlement model.
 5. Rollback remains destructive and should be exercised only against a

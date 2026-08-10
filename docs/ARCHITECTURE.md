@@ -672,18 +672,18 @@ remain identity-provider responsibilities.
 
 Use permissions rather than hard-coded frontend roles.
 
-Example permissions:
+Phase 1 permission vocabulary:
 
 ```text
+event.read
+event.manage
+offering.read
+offering.manage
 purchase.read
-purchase.correct
+payment.read
 payment.verify
-saving.adjust
-giveaway.approve
-livestock.manage
-allocation.override
-slaughter.update
-distribution.complete
+participant.read
+dashboard.read
 audit.read
 admin.manage
 ```
@@ -691,7 +691,9 @@ admin.manage
 Authorization must be enforced in application services or dedicated policy components, not only in HTTP middleware.
 
 The complete login, session, CSRF, and Purchase-token contracts are documented
-in `docs/security/AUTHENTICATION.md`.
+in docs/security/AUTHENTICATION.md. The authoritative lifecycle and permission
+details are documented in docs/domain/COMMERCE_LIFECYCLES.md and
+docs/security/PERMISSIONS.md.
 
 ---
 

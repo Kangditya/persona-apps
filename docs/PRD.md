@@ -541,22 +541,27 @@ Dashboard metrics must be derived from authoritative transactional records, not 
 
 Each aggregate owns its own lifecycle. Avoid one global status enum.
 
-Illustrative status groups:
+Phase 1 status groups:
 
 | Aggregate            | Example Statuses                                                             |
 | -------------------- | ---------------------------------------------------------------------------- |
 | Event                | Draft, Published, Active, Suspended, Closed, Archived                        |
+| Offering             | Draft, Published, Unavailable, Archived                                      |
 | Quota Reservation    | Reserved, Consumed, Released, Expired                                        |
 | Purchase             | Draft, Pending Payment, Paid, Eligible, Allocated, Completed, Cancelled      |
 | Payment              | Pending, Submitted, Verified, Rejected, Refunded                             |
+| Sohibul Qurban       | Pending, Active, Replaced, Cancelled                                         |
 | Saving Account       | Draft, Active, Partially Funded, Fully Funded, Converted, Cancelled, Expired |
 | Giveaway Application | Submitted, Under Review, Approved, Rejected, Assigned                        |
 | Livestock            | Registered, Inspected, Ready, Allocated, Queued, Slaughtered, Held           |
 | Allocation           | Provisional, Confirmed, Released, Reassigned                                 |
 | Distribution         | Pending, Prepared, Ready, Collected, Delivered, Failed                       |
 
-The Event lifecycle above is fixed for Phase 1. Final transitions for the
-remaining aggregates must be completed during domain modeling.
+The Phase 1 transition grammar, command guards, error behavior, audit/outbox
+effects, and replay rules are defined in the Commerce Lifecycles specification.
+The Phase 1 Operations permission matrix is defined in the Permissions
+specification. Saving, Giveaway, allocation, distribution, refund, and
+provider-specific transitions remain deferred.
 
 ---
 

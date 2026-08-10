@@ -170,9 +170,9 @@ Selected but not implemented platform foundations:
 - guest Storefront access with hashed Purchase-scoped Bearer tokens.
 
 ADR-043 and `docs/security/AUTHENTICATION.md` define these contracts. The OIDC
-and OAuth2 libraries are not dependencies yet, no auth/session schema has been
-applied, and no login, callback, session, CSRF, permission, or Purchase-token
-runtime exists.
+and OAuth2 libraries are not dependencies yet. Migration 0005 scripts
+auth/session and Purchase-token hash storage, but no login, callback, session,
+CSRF, permission, or Purchase-token runtime exists.
 
 ### Infrastructure
 
@@ -211,10 +211,13 @@ Implemented:
 - repository Make targets for the complete normal CLI surface.
 
 The proposed qurban business schema is documented in `docs/database/ERD.md`
-and scripted in the four numbered migration pairs under
+and scripted in the five numbered migration pairs under
 `apps/api/migrations`. The schema includes foundation, commerce/funding,
-operations, audit, outbox, command idempotency, and seed metadata. No business
-repository or API command uses these tables yet.
+operations, audit, outbox, command idempotency, seed metadata, and Phase 1
+commerce-safety constraints for Event suspension, Offering quota, intended
+participants, quota reservations, evidence metadata, Purchase tokens, and
+Operations sessions. No business repository or API command uses these tables
+yet.
 
 The reference seed group is intentionally empty. The development group only
 contains `development.sample-event`. No migration or seed has been run against
@@ -286,10 +289,12 @@ Offering boundary, one-Offering direct checkout, participant-unit quota
 reservation, append-oriented payment evidence, and atomic exactly-once Sohibul
 Qurban activation.
 
-These rules are documentation only. The existing schema has no Offering quota
-or quota-reservation table, and no runtime command currently enforces the
-lifecycle, evidence, quota, payment-verification, or participant-activation
-behavior. W1-03 and W1-04 own the required schema and policy follow-up.
+Migration 0005 now scripts the supporting Offering quota, quota-reservation,
+participant, evidence, token, session, and audit storage. No runtime command
+currently enforces lifecycle, evidence, quota, payment-verification, or
+participant-activation behavior. ADR-044, Commerce Lifecycles, and
+Permissions now define the required Phase 1 lifecycle and authorization
+policy; W1-05 and W1-06 own endpoint and runtime follow-up.
 
 ---
 

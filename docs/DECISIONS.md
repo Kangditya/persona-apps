@@ -1337,3 +1337,40 @@ Phase 1 common purchasing uses these rules:
   the current operator mapping assumes one configured issuer.
 - Public accounts, Purchase-token recovery/rotation, operator provisioning,
   permission administration, and event-scoped permissions remain deferred.
+
+---
+
+## ADR-044: Define Phase 1 lifecycle and permission policy
+
+**Status:** Accepted
+
+### Decision
+
+Commerce transitions, authorization requirements, guards, audit effects,
+outbox effects, retry handling, and rejection outcomes are authoritative in
+docs/domain/COMMERCE_LIFECYCLES.md. This policy implements the lifecycle
+rules accepted in ADR-042 without adding runtime behavior.
+
+The complete Phase 1 permission vocabulary is event.read, event.manage,
+offering.read, offering.manage, purchase.read, payment.read, payment.verify,
+participant.read, dashboard.read, audit.read, and admin.manage. Operations
+roles are provisioned with the fixed grants listed in
+docs/security/PERMISSIONS.md; no role management endpoint is introduced.
+
+OIDC login, callback, session inspection, and logout use the authentication
+and CSRF controls from ADR-043 rather than a business permission. Every
+other operations endpoint requires its mapped permission after session,
+Origin, and CSRF checks, and before idempotency replay. Storefront requests
+remain role-free and may use only the scoped Purchase access token accepted
+by ADR-043.
+
+Payment verification and rejection retain ADR-042's transactional behavior.
+Participant replacement or cancellation remains deferred; until a dedicated
+permission is accepted, any exceptional Phase 1 participant write requires
+admin.manage and an auditable reason.
+
+### Consequences
+
+W1-05 must expose only endpoints whose authorization maps to this vocabulary.
+W1-06 implements the documented enforcement and command behavior. This ADR
+does not add tables, Go dependencies, routes, or a generic idempotency store.

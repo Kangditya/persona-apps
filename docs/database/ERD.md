@@ -89,6 +89,7 @@ erDiagram
         bigint price_minor
         text currency_code
         integer participant_capacity
+        bigint participant_quota
         text status
         timestamptz created_at
         timestamptz updated_at
@@ -147,6 +148,7 @@ erDiagram
         uuid event_id FK
         text purchase_ref UK
         text channel
+        bytea access_token_hash UK
         uuid purchaser_party_id FK
         uuid payer_party_id FK
         uuid offering_id FK
@@ -167,6 +169,33 @@ erDiagram
         text to_status
         uuid changed_by_operator_id FK
         timestamptz changed_at
+    }
+
+    PURCHASE_PARTICIPANTS {
+        uuid id PK
+        uuid event_id FK
+        uuid purchase_id FK
+        uuid party_id FK
+        integer sequence_no
+        text display_name_snapshot
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    QUOTA_RESERVATIONS {
+        uuid id PK
+        uuid event_id FK
+        uuid purchase_id FK
+        uuid offering_id FK
+        integer attempt_no
+        integer participant_units
+        text status
+        timestamptz expires_at
+        timestamptz consumed_at
+        timestamptz released_at
+        bigint version
+        timestamptz created_at
+        timestamptz updated_at
     }
 
     SOHIBUL_QURBAN {
@@ -204,6 +233,11 @@ erDiagram
         text method
         text status
         text provider_reference UK
+        text evidence_reference
+        text evidence_filename
+        text evidence_media_type
+        bigint evidence_size_bytes
+        bytea evidence_sha256
         uuid verified_by_operator_id FK
         timestamptz created_at
         timestamptz updated_at
@@ -371,9 +405,23 @@ erDiagram
         text target_type
         uuid target_id
         text request_id
+        text source
+        text permission
         jsonb before_data
         jsonb after_data
         timestamptz created_at
+    }
+
+    OPERATOR_SESSIONS {
+        uuid id PK
+        uuid operator_user_id FK
+        bytea session_token_hash UK
+        bytea csrf_token_hash
+        jsonb permission_snapshot
+        timestamptz expires_at
+        timestamptz revoked_at
+        timestamptz created_at
+        timestamptz last_seen_at
     }
 
     OUTBOX_EVENTS {
@@ -410,6 +458,7 @@ erDiagram
     OPERATOR_USERS ||--o{ ALLOCATION_STATUS_HISTORY : changes
     OPERATOR_USERS ||--o{ SLAUGHTER_RECORDS : records
     OPERATOR_USERS ||--o{ DISTRIBUTION_STATUS_HISTORY : changes
+    OPERATOR_USERS ||--o{ OPERATOR_SESSIONS : owns
     OPERATOR_USERS ||--o{ AUDIT_LOG : acts
 
     PARTIES ||--o{ PURCHASES : purchases
@@ -420,6 +469,7 @@ erDiagram
     PARTIES ||--o{ GIVEAWAY_APPLICATIONS : nominates
     PARTIES ||--o{ GIVEAWAY_ASSIGNMENTS : receives
     PARTIES ||--o{ SOHIBUL_QURBAN : represents
+    PARTIES ||--o{ PURCHASE_PARTICIPANTS : identifies
     PARTIES ||--o{ PAYMENT_RECORDS : pays
     PARTIES ||--o{ AUDIT_LOG : acts
 
@@ -429,6 +479,8 @@ erDiagram
     QURBAN_EVENTS ||--o{ GIVEAWAY_PROGRAMS : scopes
     QURBAN_EVENTS ||--o{ GIVEAWAY_ASSIGNMENTS : scopes
     QURBAN_EVENTS ||--o{ PURCHASES : contains
+    QURBAN_EVENTS ||--o{ PURCHASE_PARTICIPANTS : contains
+    QURBAN_EVENTS ||--o{ QUOTA_RESERVATIONS : reserves
     QURBAN_EVENTS ||--o{ SOHIBUL_QURBAN : contains
     QURBAN_EVENTS ||--o{ PAYMENT_RECORDS : contains
     QURBAN_EVENTS ||--o{ FINANCIAL_LEDGER_ENTRIES : contains
@@ -440,6 +492,7 @@ erDiagram
     EVENT_LOCATIONS ||--o{ LIVESTOCK : locates
     OFFERINGS ||--o{ SAVING_ACCOUNTS : targets
     OFFERINGS ||--o{ PURCHASES : selected_for
+    OFFERINGS ||--o{ QUOTA_RESERVATIONS : reserves
 
     SAVING_ACCOUNTS ||--o| PURCHASES : converts_to
     GIVEAWAY_PROGRAMS ||--o{ GIVEAWAY_APPLICATIONS : receives
@@ -447,6 +500,8 @@ erDiagram
     GIVEAWAY_ASSIGNMENTS ||--o| PURCHASES : funds
 
     PURCHASES ||--o{ PURCHASE_STATUS_HISTORY : records
+    PURCHASES ||--o{ PURCHASE_PARTICIPANTS : captures
+    PURCHASES ||--o{ QUOTA_RESERVATIONS : reserves
     PURCHASES ||--o{ SOHIBUL_QURBAN : activates
     PURCHASES ||--o{ PAYMENT_RECORDS : funds
     PURCHASES ||--o{ FINANCIAL_LEDGER_ENTRIES : balances
@@ -484,6 +539,10 @@ event-aware composite foreign keys for references such as offering-to-purchase,
 purchase-to-participant, livestock-to-location, and purchase-to-allocation.
 
 ## Table model summary
+
+Migration 0005_mvp_commerce_safety is additive. It extends the documented
+baseline without editing migrations 0001 through 0004 and is not yet applied to
+a shared environment.
 
 All tables below are `NEW`. “Audit fields” means the table’s immutable or
 mutable timestamps and, where applicable, operator/reason fields. None uses
@@ -526,6 +585,27 @@ by status and history.
 - Indexes: `(event_id, location_type)` and unique event code.
 
 ### Commercial and funding model
+
+### Phase 1 commerce-safety delta
+
+- qurban_events adds SUSPENDED and a partial unique index for one ACTIVE Event.
+- offerings adds an optional non-negative participant_quota. Null leaves only
+  the Event participant quota in force; participant_capacity remains the
+  per-Purchase maximum.
+- purchases adds a unique nullable 32-byte access_token_hash. Common Purchases
+  require it, and the raw bearer token is never stored.
+- purchase_participants captures intended participant display names, an optional
+  reusable Party link, and a positive sequence unique within the Purchase.
+  Participant activation must resolve a Party before creating the existing
+  non-null Party-backed Sohibul Qurban outcome.
+- quota_reservations retains numbered attempts for one Purchase and its selected
+  Offering. Its composite foreign key prevents a cross-Event or mismatched
+  Offering reference; a partial unique index permits one RESERVED attempt.
+  SQL indexes active Event and Offering reservations and the expiry queue, while
+  commands still lock authoritative quota totals transactionally.
+- payment_records adds all-or-none evidence filename, media type, byte size,
+  and SHA-256 metadata. Only image/jpeg, image/png, and application/pdf up to
+  10 MiB are accepted.
 
 #### `offerings` — NEW
 
@@ -725,6 +805,17 @@ by status and history.
 
 ### Platform integrity
 
+### Phase 1 platform-safety delta
+
+- operator_sessions stores an active operator reference, unique 32-byte session
+  hash, CSRF hash, permission snapshot, expiry, revocation, and last-seen time.
+  It stores no raw credential.
+- audit_log adds source and permission context. The pre-existing optional reason
+  column remains the audit reason field.
+- idempotency_records and financial_ledger_entries remain the only direct
+  idempotency stores. Intended participants, reservations, sessions, audit, and
+  outbox records receive no generic key.
+
 #### `audit_log` — NEW
 
 - Purpose: append-only record of privileged and sensitive changes.
@@ -800,6 +891,13 @@ The baseline therefore keeps a direct `idempotency_key` only on
 | `payment_status_history`        | Payment transition history                                                                           | Inserted once in the payment command transaction. Duplicate callbacks must not append duplicate history.                                                                                                                         | No         |
 | `financial_ledger_entries`      | Payment, installment, sponsor funding, refund, transfer, and adjustment effects                      | Every retry-sensitive ledger-producing command derives one unique effect key per entry. The partial unique index is the final append-only duplicate guard. Multi-entry commands derive stable leg suffixes from one command key. | Yes        |
 
+#### Commerce safety additions
+
+| Table                 | Retry-sensitive process                               | Idempotency ownership and database guard                                                                                                                            | Direct key |
+| --------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| purchase_participants | Intended-participant capture                          | Created in the checkout transaction. Unique Purchase and sequence prevents duplicate positions; a direct key would hide a duplicated checkout.                      | No         |
+| quota_reservations    | Reserve, consume, release, expire, or reacquire quota | The owning checkout or evidence command uses shared replay. Attempt and active-reservation uniqueness protect one Purchase; locked quota totals resolve contention. | No         |
+
 #### Livestock, allocation, and event operations
 
 | Table                         | Retry-sensitive process                                                                  | Idempotency ownership and database guard                                                                                                                                                           | Direct key |
@@ -820,6 +918,7 @@ The baseline therefore keeps a direct `idempotency_key` only on
 
 | Table                 | Retry-sensitive process                              | Idempotency ownership and database guard                                                                                                                              | Direct key       |
 | --------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| operator_sessions     | Login, CSRF rotation, revocation, and logout         | Credential hashes are not command idempotency keys. Login state plus unique session hashes prevent duplicate credential persistence.                                  | No               |
 | `audit_log`           | Recording a privileged or sensitive accepted command | Written once with the owning command. `request_id` is correlation metadata and must not be used as the replay key because retries may have different request IDs.     | No               |
 | `outbox_events`       | Durable handoff and at-least-once delivery           | Produced once with the domain transaction. `id` is the delivery identity; each consumer deduplicates by event and consumer or performs a naturally idempotent update. | No               |
 | `idempotency_records` | Generic retry-sensitive API command                  | Owns namespace/key claim, request hash, stored response, and expiry. The composite primary key serializes duplicate claims without a business FK.                     | Owns generic key |

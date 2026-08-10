@@ -64,16 +64,23 @@ the database CLI and Make targets.
         │
 0004 metadata
   └── schema_seeds
+        │
+0005 MVP commerce safety
+  ├── purchase_participants
+  ├── quota_reservations
+  ├── operator_sessions
+  └── safety constraints and indexes
 ```
 
 ## Migration inventory
 
-| Sequence | Migration                             | Type        | Tables affected                                                                                                                                                                                      | Purpose                                                                                                                                        | Backfill | Risk                                                                     |
-| -------: | ------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------ |
-|     0001 | `0001_qurban_foundation.up.sql`       | Schema-only | `operator_users`, `parties`, `qurban_events`, `event_locations`, `offerings`                                                                                                                         | Establish identity references, annual event boundary, locations, and commercial offerings.                                                     | None.    | Low: all tables are new and additive.                                    |
-|     0002 | `0002_commerce_and_funding.up.sql`    | Schema-only | `saving_accounts`, `giveaway_programs`, `giveaway_applications`, `giveaway_assignments`, `purchases`, purchase/participant histories, `payment_records`, payment history, `financial_ledger_entries` | Model three pre-purchase/channel sources, one canonical purchase, participant activation, payment verification, and append-only money effects. | None.    | Medium: channel/source checks and ledger semantics are core invariants.  |
-|     0003 | `0003_operations_and_platform.up.sql` | Schema-only | livestock, inspection/location/status histories, allocations, allocation history, slaughter, distribution, audit, outbox, idempotency                                                                | Add operational lifecycle, capacity claims, event-day records, minimal distribution status, and platform integrity records.                    | None.    | Medium: allocation capacity still needs transactional application logic. |
-|     0004 | `0004_schema_seeds.up.sql`            | Metadata    | `schema_seeds`                                                                                                                                                                                       | Track deterministic seed execution separately from migration version state.                                                                    | None.    | Low: independent metadata table.                                         |
+| Sequence | Migration                             | Type            | Tables affected                                                                                                                                                                                      | Purpose                                                                                                                                        | Backfill | Risk                                                                     |
+| -------: | ------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------ |
+|     0001 | `0001_qurban_foundation.up.sql`       | Schema-only     | `operator_users`, `parties`, `qurban_events`, `event_locations`, `offerings`                                                                                                                         | Establish identity references, annual event boundary, locations, and commercial offerings.                                                     | None.    | Low: all tables are new and additive.                                    |
+|     0002 | `0002_commerce_and_funding.up.sql`    | Schema-only     | `saving_accounts`, `giveaway_programs`, `giveaway_applications`, `giveaway_assignments`, `purchases`, purchase/participant histories, `payment_records`, payment history, `financial_ledger_entries` | Model three pre-purchase/channel sources, one canonical purchase, participant activation, payment verification, and append-only money effects. | None.    | Medium: channel/source checks and ledger semantics are core invariants.  |
+|     0003 | `0003_operations_and_platform.up.sql` | Schema-only     | livestock, inspection/location/status histories, allocations, allocation history, slaughter, distribution, audit, outbox, idempotency                                                                | Add operational lifecycle, capacity claims, event-day records, minimal distribution status, and platform integrity records.                    | None.    | Medium: allocation capacity still needs transactional application logic. |
+|     0004 | `0004_schema_seeds.up.sql`            | Metadata        | `schema_seeds`                                                                                                                                                                                       | Track deterministic seed execution separately from migration version state.                                                                    | None.    | Low: independent metadata table.                                         |
+|     0005 | `0005_mvp_commerce_safety.up.sql`     | Additive safety | qurban event, offering, purchase, payment, audit, intended participant, quota reservation, and session storage                                                                                       | Enforce Phase 1 lifecycle, quota, evidence, Purchase-token, and session safety without rewriting history.                                      | None.    | Medium: constraint changes require disposable-DB verification.           |
 
 The matching `.down.sql` files are rollback scripts for each unit. Rollback is
 destructive for the unit being reverted and must only be used when the owning
@@ -124,6 +131,26 @@ deployment has confirmed that its data is disposable or separately backed up.
   seeder runner.
 - Rollback: `0004_schema_seeds.down.sql` drops only the seed history table.
 
+### 0005 — MVP commerce safety
+
+- Tables: adds purchase_participants, quota_reservations, and operator_sessions;
+  alters qurban_events, offerings, purchases, payment_records, and audit_log.
+- Constraints: one active Event; SUSPENDED event status; optional Offering quota;
+  common-Purchase 32-byte access-token hashes; intended-participant sequence;
+  event-aware Purchase and Offering reservation references; one active
+  reservation; terminal reservation timestamps; evidence metadata type, size,
+  and digest; hashed revocable sessions with permission snapshots.
+- Indexes: active Event, Purchase-token lookup, active and expiring quota
+  reservations, and active/expiring operator sessions.
+- Data migration: none. The repository has no shared environment migration or
+  business runtime, so there is no backfill.
+- Compatibility impact: additive columns and tables; the Event status check
+  expands. The migration preserves audit_log.reason and source_application,
+  adding source and permission context for future writers.
+- Rollback: drops only migration 0005 additions, then restores the original
+  Event status check. It is destructive for 0005 tables and correctly refuses
+  rollback while SUSPENDED Events remain.
+
 ## Constraint and index classification
 
 ### Schema-only migrations
@@ -160,7 +187,7 @@ None. No existing fields or tables are renamed or deleted.
 Apply up migrations in ascending order. Roll back in descending order:
 
 ```text
-0004 down → 0003 down → 0002 down → 0001 down
+0005 down → 0004 down → 0003 down → 0002 down → 0001 down
 ```
 
 The down scripts intentionally use `DROP TABLE` and are destructive. They do
@@ -174,16 +201,16 @@ API startup does not run migrations.
 
 ## Unresolved decisions and schema impact
 
-| Decision                           | Current treatment                                                                               | Required before                                 |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Offering/package/share composition | `offering_kind` remains descriptive text; no item/variant tables.                               | Offering implementation beyond the first slice. |
-| Multiple offerings in one checkout | One purchase has one offering; no cart or purchase-item table.                                  | Multi-offering checkout.                        |
-| Saving price/target lock           | Saving stores target amount and optional offering, without lock history.                        | Saving conversion implementation.               |
-| Giveaway selection                 | Application/assignment status only; selection policy is not stored.                             | Giveaway workflow implementation.               |
-| Personal slaughter/attendance      | Generic slaughter records only; no participant queue/attendance model.                          | Field workflow confirmation.                    |
-| Distribution scope                 | Minimal purchase/participant status record; no beneficiaries, portions, proof, or route model.  | Distribution requirements.                      |
-| Authentication/authorization       | Minimal operator reference only; roles, permissions, sessions, and scopes deferred.             | Auth ADR and operations access implementation.  |
-| Migration tooling                  | `golang-migrate/migrate/v4` consumes the existing SQL pairs; CLI and Make targets are explicit. | Dirty recovery commands and disposable-DB CI.   |
+| Decision                           | Current treatment                                                                                                    | Required before                                 |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Offering/package/share composition | `offering_kind` remains descriptive text; no item/variant tables.                                                    | Offering implementation beyond the first slice. |
+| Multiple offerings in one checkout | One purchase has one offering; no cart or purchase-item table.                                                       | Multi-offering checkout.                        |
+| Saving price/target lock           | Saving stores target amount and optional offering, without lock history.                                             | Saving conversion implementation.               |
+| Giveaway selection                 | Application/assignment status only; selection policy is not stored.                                                  | Giveaway workflow implementation.               |
+| Personal slaughter/attendance      | Generic slaughter records only; no participant queue/attendance model.                                               | Field workflow confirmation.                    |
+| Distribution scope                 | Minimal purchase/participant status record; no beneficiaries, portions, proof, or route model.                       | Distribution requirements.                      |
+| Authentication/authorization       | Session and Purchase-token hashes are stored; runtime OIDC, permissions, scopes, and administration remain deferred. | W1-06 operations access implementation.         |
+| Migration tooling                  | `golang-migrate/migrate/v4` consumes the existing SQL pairs; CLI and Make targets are explicit.                      | Dirty recovery commands and disposable-DB CI.   |
 
 ## Plan variance
 
