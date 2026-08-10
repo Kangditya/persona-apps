@@ -52,8 +52,11 @@ apps/storefront-web
 ### Notes
 
 - Use `Offering Catalogue`, not only `Animal Catalogue`.
-- Offerings may later include individual animals, categories, packages, livestock shares, or program-based products.
-- Shopping cart support remains optional.
+- Phase 1 Offerings are event-scoped sellable packages, shares, or categories,
+  not physical Livestock records.
+- Phase 1 uses direct checkout with one Offering per Purchase; there is no
+  Shopping Cart or purchase-item aggregate.
+- Other Offering forms and multi-offering checkout require later requirements.
 
 ---
 
@@ -82,6 +85,10 @@ apps/api/internal/giveaway
 ### Core Rule
 
 All eligible channels converge into one canonical Purchase lifecycle.
+
+For Phase 1 common purchasing, checkout reserves Event and Offering quota in
+participant units for 24 hours. Submitted evidence pauses expiry; activation
+consumes quota; expiry, cancellation, or rejection releases it.
 
 ---
 
@@ -466,22 +473,25 @@ The slice is complete only when it includes:
 
 ## 15. Open Requirements
 
-1. **Offering model**  
-   Confirm whether offerings represent individual animals, categories, packages, cattle shares, or a combination.
+### Resolved for Phase 1
 
-2. **Checkout model**  
-   Confirm whether a purchaser may buy multiple offerings in one checkout.
+- **Offering model:** event-scoped sellable packages, shares, or categories,
+  separate from physical Livestock.
+- **Checkout model:** direct checkout with exactly one Offering per Purchase and
+  no Shopping Cart.
 
-3. **Saving price policy**  
+### Still Open
+
+1. **Saving price policy**
    Confirm whether a saving plan locks price and offering at creation.
 
-4. **Giveaway selection**  
+2. **Giveaway selection**
    Confirm whether the recipient is selected by sponsor, committee, manual approval, or random draw.
 
-5. **Personal slaughter flow**  
+3. **Personal slaughter flow**
    Confirm whether each Sohibul Qurban performs the slaughter personally and therefore requires attendance and queue scheduling.
 
-6. **Distribution scope**  
+4. **Distribution scope**
    Confirm whether distribution covers beneficiary delivery, Sohibul Qurban entitlement, or both.
 
 These questions must be resolved before detailed design of their affected capability.

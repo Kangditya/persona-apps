@@ -232,7 +232,7 @@ Allow a purchaser to select an available qurban offering, submit participant det
 
 - offering catalogue;
 - price and availability display;
-- cart or direct checkout;
+- direct checkout;
 - participant entry;
 - payment instruction;
 - payment status;
@@ -240,6 +240,32 @@ Allow a purchaser to select an available qurban offering, submit participant det
 - receipt or proof;
 - cancellation and expiry rules;
 - operator-assisted purchase.
+
+### Phase 1 Common-Purchase Rules
+
+- The Storefront exposes only the active event. Event lifecycle is
+  `DRAFT -> PUBLISHED -> ACTIVE <-> SUSPENDED -> CLOSED -> ARCHIVED`, with at
+  most one active event.
+- An MVP Offering is an event-scoped sellable package, share, or category, not
+  a physical Livestock record.
+- One Purchase selects exactly one Offering. Phase 1 has no Shopping Cart or
+  purchase-item aggregate.
+- Checkout snapshots the Offering, price, currency, participant capacity, and
+  intended participant names.
+- Quota uses participant units against both Event and Offering limits. Checkout
+  atomically reserves units for 24 hours.
+- Submitted payment evidence pauses reservation expiry until review.
+  Activation consumes quota; expiry, cancellation, or rejection releases it.
+  Evidence resubmission after release must reacquire quota atomically.
+- Common-purchase payment evidence is an append-oriented object-storage
+  reference. JPEG, PNG, and PDF are accepted up to 10 MiB; PostgreSQL stores
+  metadata and SHA-256, not file bytes.
+- Evidence must declare the exact outstanding amount. Underpayment and
+  overpayment submissions are rejected; balance policy remains deferred.
+- Authorized Finance or Operations Managers verify or reject evidence.
+  Successful verification atomically marks Payment verified, records Purchase
+  `PAID` then `ELIGIBLE`, consumes quota, activates each Sohibul Qurban once,
+  and writes audit and outbox effects.
 
 ---
 
@@ -519,7 +545,8 @@ Illustrative status groups:
 
 | Aggregate            | Example Statuses                                                             |
 | -------------------- | ---------------------------------------------------------------------------- |
-| Event                | Draft, Published, Active, Closed, Archived                                   |
+| Event                | Draft, Published, Active, Suspended, Closed, Archived                        |
+| Quota Reservation    | Reserved, Consumed, Released, Expired                                        |
 | Purchase             | Draft, Pending Payment, Paid, Eligible, Allocated, Completed, Cancelled      |
 | Payment              | Pending, Submitted, Verified, Rejected, Refunded                             |
 | Saving Account       | Draft, Active, Partially Funded, Fully Funded, Converted, Cancelled, Expired |
@@ -528,7 +555,8 @@ Illustrative status groups:
 | Allocation           | Provisional, Confirmed, Released, Reassigned                                 |
 | Distribution         | Pending, Prepared, Ready, Collected, Delivered, Failed                       |
 
-Final status names and transitions must be validated during domain modeling.
+The Event lifecycle above is fixed for Phase 1. Final transitions for the
+remaining aggregates must be completed during domain modeling.
 
 ---
 
@@ -738,8 +766,6 @@ The initial product is successful when:
 
 The following decisions remain intentionally open:
 
-- exact participant quota rules per offering;
-- whether quota is reserved before or after payment;
 - whether saving targets lock price;
 - saving cancellation and transfer policy;
 - giveaway eligibility and selection workflow;
@@ -754,6 +780,11 @@ The following decisions remain intentionally open:
 - data retention periods;
 - organization and multi-tenant requirements;
 - public self-service identity model.
+
+Phase 1 common purchasing has resolved Offering shape, direct checkout, quota
+reservation, payment evidence, and participant activation through ADR-042.
+Those decisions do not define later Saving, Giveaway, refund, payment-gateway,
+or livestock-allocation policy.
 
 These decisions should be captured through updates to this PRD or Architecture Decision Records.
 
@@ -832,7 +863,8 @@ Purchasing
 └── Purchase History
 ```
 
-Shopping cart functionality is optional. It should only be implemented when the confirmed user journey allows multiple offerings in one checkout.
+Phase 1 uses direct checkout with exactly one Offering per Purchase. Shopping
+Cart and multi-offering checkout require a later requirement and decision.
 
 ### 21.3 Party & Participant
 
@@ -1016,13 +1048,21 @@ Administration & Reporting
 
 ## 23. Capability-Level Open Questions
 
-The following requirements remain unresolved and must be verified before detailed implementation:
+### Resolved for Phase 1
 
-1. Whether offerings represent individual animals, packages, cattle shares, categories, or a combination.
-2. Whether one checkout may contain multiple offerings.
-3. Whether saving plans lock the offering and price at creation.
-4. Whether giveaway recipients are selected by sponsor, committee, manual approval, or random draw.
-5. Whether each Sohibul Qurban performs the slaughter personally and therefore requires individual attendance and queue scheduling.
-6. Whether distribution includes beneficiary delivery, Sohibul Qurban entitlement, or both.
+- Offerings are event-scoped sellable packages, shares, or categories and
+  remain separate from physical Livestock.
+- One direct checkout selects exactly one Offering; there is no Shopping Cart
+  or purchase-item aggregate.
+
+### Still Open
+
+The following requirements remain unresolved and must be verified before their
+affected implementation:
+
+1. Whether saving plans lock the offering and price at creation.
+2. Whether giveaway recipients are selected by sponsor, committee, manual approval, or random draw.
+3. Whether each Sohibul Qurban performs the slaughter personally and therefore requires individual attendance and queue scheduling.
+4. Whether distribution includes beneficiary delivery, Sohibul Qurban entitlement, or both.
 
 These decisions should update the PRD, Product Map, and relevant ADRs before their affected phase enters BUILD.

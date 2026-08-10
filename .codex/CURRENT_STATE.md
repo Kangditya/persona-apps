@@ -160,6 +160,20 @@ Current backend capabilities:
 
 No qurban domain modules exist yet.
 
+Selected but not implemented platform foundations:
+
+- standard-library `http.ServeMux` as the sole HTTP router;
+- the existing ADR-040 `golang-migrate/migrate/v4` database lifecycle;
+- provider-neutral Operations OIDC Authorization Code with PKCE;
+- hashed, revocable server-side Operations sessions with permission snapshots,
+  Origin checks, and CSRF protection;
+- guest Storefront access with hashed Purchase-scoped Bearer tokens.
+
+ADR-043 and `docs/security/AUTHENTICATION.md` define these contracts. The OIDC
+and OAuth2 libraries are not dependencies yet, no auth/session schema has been
+applied, and no login, callback, session, CSRF, permission, or Purchase-token
+runtime exists.
+
 ### Infrastructure
 
 Implemented:
@@ -196,6 +210,12 @@ Implemented:
 - `db setup` for migrations plus reference seeds only;
 - repository Make targets for the complete normal CLI surface.
 
+The proposed qurban business schema is documented in `docs/database/ERD.md`
+and scripted in the four numbered migration pairs under
+`apps/api/migrations`. The schema includes foundation, commerce/funding,
+operations, audit, outbox, command idempotency, and seed metadata. No business
+repository or API command uses these tables yet.
+
 The reference seed group is intentionally empty. The development group only
 contains `development.sample-event`. No migration or seed has been run against
 staging or production.
@@ -209,7 +229,9 @@ Implemented or revised:
 - architecture baseline;
 - architecture decision register;
 - repository agent instructions;
-- current-state tracking.
+- current-state tracking;
+- database ERD, migration plan, operations guide, and design review;
+- command-scoped idempotency ownership and development guidance.
 
 The architecture artifacts document React Router with Remix-style routing
 conventions and TanStack Query server-state ownership. The approved UI/API
@@ -256,6 +278,18 @@ The following roles must remain distinct:
 - giveaway applicant;
 - giveaway recipient;
 - Sohibul Qurban.
+
+### Documented Phase 1 Commerce Rules
+
+ADR-042 now fixes the Phase 1 Event lifecycle, one-active-event rule, MVP
+Offering boundary, one-Offering direct checkout, participant-unit quota
+reservation, append-oriented payment evidence, and atomic exactly-once Sohibul
+Qurban activation.
+
+These rules are documentation only. The existing schema has no Offering quota
+or quota-reservation table, and no runtime command currently enforces the
+lifecycle, evidence, quota, payment-verification, or participant-activation
+behavior. W1-03 and W1-04 own the required schema and policy follow-up.
 
 ---
 
@@ -412,8 +446,8 @@ The following roles must remain distinct:
 
 ### Platform Capabilities
 
-- business database schema;
-- database migrations;
+- business repositories and queries over the scripted schema;
+- disposable-PostgreSQL migration integration verification;
 - audit framework;
 - permission enforcement;
 - request idempotency;
@@ -552,10 +586,13 @@ These rules must not be invented during implementation.
    requirements cannot be finalized until meaningful public and operations
    endpoints exist.
 3. The Go backend has no module registration pattern yet.
-4. No migration tool has been selected.
+4. Migration tooling and SQL artifacts exist, but the migrations have not been
+   executed through the runner against disposable PostgreSQL in this
+   environment.
 5. No HTTP router decision has been finalized.
 6. No authentication approach has been selected.
-7. No initial database domain model has been validated.
+7. The proposed database domain model is documented and scripted, but no
+   business vertical slice has validated its command behavior or query shape.
 
 ---
 

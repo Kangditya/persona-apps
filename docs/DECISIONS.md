@@ -1168,3 +1168,172 @@ deterministic bootstrap data independent from schema version state.
 - Dirty-version recovery (`force`) and arbitrary navigation (`goto`) remain
   deferred until an operational recovery policy and disposable-DB verification
   exist.
+
+---
+
+## ADR-041: Use command-scoped idempotency with domain-specific duplicate guards
+
+**Status:** Accepted
+
+Retry safety belongs to the command that owns a business effect. Do not add an
+`idempotency_key` column to every aggregate, history table, audit record, or
+outbox event.
+
+Use `idempotency_records` as the shared replay ledger for retry-sensitive API
+commands. Its `(namespace, idempotency_key)` primary key identifies one caller
+intent, while `request_hash` prevents the same key from being reused for a
+different request. The namespace must identify the API surface, command, and
+stable caller scope without introducing hypothetical tenancy.
+
+### Command replay contract
+
+- Authenticate and authorize the caller before returning a stored response.
+- The first request inserts its idempotency record and performs the domain
+  mutation in one PostgreSQL transaction.
+- Domain state, status history, audit records, outbox events, and the replayable
+  response are committed together.
+- The same namespace, key, and request hash returns the stored status and body
+  without executing the command again.
+- The same namespace and key with a different request hash returns a conflict.
+- The primary-key conflict serializes concurrent duplicates; after the winning
+  transaction commits, the duplicate reads and replays its result. A rolled
+  back transaction leaves no completed replay record.
+- Transient infrastructure failures are not stored as completed outcomes.
+- Retention is command-specific and must not expire a key while a duplicate
+  business effect would still be unacceptable.
+
+### Domain-specific guards
+
+- `financial_ledger_entries.idempotency_key` remains the direct effect-level
+  guard for append-only financial writes. A command producing multiple entries
+  derives a unique entry key for each leg from the command key.
+- Provider references, purchase-source uniqueness, participant sequence,
+  active-allocation constraints, current-location constraints, and one-record
+  operational constraints remain natural duplicate guards.
+- Version columns, row locks, and atomic conditional updates handle stale or
+  contested state; they complement idempotency rather than replace it.
+- Status histories and `audit_log` do not receive independent idempotency keys.
+  They are written once inside the owning command transaction.
+- `outbox_events.id` is the delivery identity. Each consumer deduplicates by
+  event and consumer, or uses a naturally idempotent projection update. HTTP
+  response replay records are not reused as a generic consumer inbox.
+- Exact payment-webhook inbox fields remain deferred until a provider contract
+  defines the provider event identity, authentication, and reordering rules.
+
+### Consequences
+
+- Public and operations OpenAPI contracts expose `Idempotency-Key` only for
+  retry-sensitive commands, not every mutation.
+- A frontend or integration reuses one key for retries of the same user intent
+  and generates a new key for a new intent.
+- Business references are not treated as response-replay keys unless the
+  command contract explicitly defines them that way.
+- The existing schema is sufficient for the generic transactional replay
+  pattern and append-only ledger guard; this decision does not modify a
+  historical migration.
+- Provider inboxes, notification delivery attempts, and per-consumer receipts
+  are added only with the vertical slice that owns their behavior.
+
+---
+
+## ADR-042: Fix Phase 1 common-purchase commerce rules
+
+**Status:** Accepted
+
+Phase 1 common purchasing uses these rules:
+
+- Event lifecycle is
+  `DRAFT -> PUBLISHED -> ACTIVE <-> SUSPENDED -> CLOSED -> ARCHIVED`. Only
+  `PUBLISHED` becomes active; active events may be suspended or closed;
+  suspended events may be reactivated or closed; closed and archived events
+  cannot accept commerce commands. At most one Event is active.
+- An MVP Offering is an event-scoped sellable package, share, or category and
+  remains separate from physical Livestock.
+- One direct checkout creates one Purchase for one Offering. No Shopping Cart
+  or purchase-item aggregate is introduced.
+- Checkout snapshots Offering identity, price, currency, participant capacity,
+  and intended participant names.
+- Quota is participant units against both Event and Offering limits. Checkout
+  atomically creates a pending Purchase and a 24-hour reservation under row
+  locking or an equivalent atomic database guard.
+- Submitted payment evidence pauses reservation expiry until review.
+  Activation consumes the reservation. Expiry, cancellation, and rejection
+  release it. Resubmission after release must reacquire quota atomically.
+- Common-purchase evidence is append-oriented and stored as a private
+  object-storage reference with filename, media type, byte size, and SHA-256
+  metadata. PostgreSQL does not store evidence bytes.
+- Evidence accepts JPEG, PNG, or PDF up to 10 MiB and must declare the exact
+  outstanding amount. Lower or higher submissions are rejected; partial-payment
+  and balance policy is deferred.
+- Finance or Operations Managers verify or reject evidence. Verification locks
+  Payment, Purchase, and quota; revalidates amount, currency, status, and
+  capacity; then atomically marks Payment `VERIFIED`, records Purchase `PAID`
+  and `ELIGIBLE`, consumes quota, activates intended Sohibul Qurban exactly
+  once, and writes audit and outbox effects.
+- Rejection records a reason, releases quota, and leaves the Purchase pending.
+  A later evidence attempt must reacquire quota.
+
+### Consequences
+
+- W1-03 must add an additive schema migration for Offering quota, intended
+  participants, quota reservation attempts, evidence metadata, and required
+  integrity constraints without editing historical migrations.
+- W1-04 must define complete transition and permission matrices.
+- Retry-sensitive commands follow ADR-041. Participant activation additionally
+  uses natural uniqueness on `(purchase_id, sequence_no)`.
+- Storefront availability is advisory; checkout and quota reacquisition are
+  authoritative transactional commands.
+- Saving, Giveaway, refunds, provider callbacks, evidence retention,
+  multi-offering checkout, and livestock allocation remain separate decisions.
+
+---
+
+## ADR-043: Reuse standard HTTP and add OIDC-backed operations sessions
+
+**Status:** Accepted
+
+### Decision
+
+- Keep Go's method-aware `net/http.ServeMux`; register public and operations
+  routes explicitly from the application composition root. Do not add a
+  third-party router.
+- Keep ADR-040's `golang-migrate/migrate/v4` command, numbered SQL pairs, and
+  separate seed lifecycle. API startup never runs migrations, and migrations
+  `0001` through `0004` remain historical files.
+- Phase 1 Storefront browsing and checkout remain guest-accessible. Purchase
+  creation returns a random opaque Purchase access token once, stores only its
+  SHA-256 hash, and requires the raw token as a Purchase-scoped Bearer
+  credential for tracking, cancellation, and evidence submission.
+- Operations uses provider-neutral OpenID Connect Authorization Code flow with
+  PKCE. The Go API uses `github.com/coreos/go-oidc/v3/oidc` for provider
+  discovery and ID-token verification and `golang.org/x/oauth2` for
+  Authorization Code and PKCE exchange.
+- The API explicitly validates state, nonce, and PKCE; maps the verified
+  single-issuer `sub` claim to `operator_users.external_subject`; and denies
+  unknown or inactive operators.
+- Successful login creates a random opaque server session. Only its SHA-256
+  hash is stored; the raw token is sent in a `Secure`, `HttpOnly`,
+  `SameSite=Lax`, host-only cookie. Sessions are revocable and expire no later
+  than the verified identity session.
+- Only allowlisted permission claims are snapshotted into the session. Backend
+  policies authenticate and authorize each request before command idempotency
+  lookup or replay.
+- Unsafe cookie-authenticated requests require an explicitly allowed Origin and
+  a matching `X-CSRF-Token`; only the CSRF token hash is stored.
+- Local passwords, password reset, account recovery, MFA implementation, and
+  provider administration remain outside the API. MFA may be required by the
+  configured identity provider.
+
+### Consequences
+
+- W1-03 must add session and Purchase-token hash storage through a new additive
+  migration; this decision does not edit existing migrations.
+- W1-06 adds the selected Go dependencies and runtime behavior. They are not
+  added during this documentation task.
+- Provider issuer, client credentials, redirect URL, permission claim, allowed
+  origins, cookie policy, and encryption keys are validated environment
+  configuration, never committed values.
+- Supporting multiple OIDC issuers requires a new identity-key decision because
+  the current operator mapping assumes one configured issuer.
+- Public accounts, Purchase-token recovery/rotation, operator provisioning,
+  permission administration, and event-scoped permissions remain deferred.

@@ -509,6 +509,16 @@ Avoid distributed transactions. Use an outbox pattern for post-transaction integ
 
 ## 10. API Architecture
 
+## 10.0 HTTP Server
+
+Use the standard library's method-aware `http.ServeMux`. Public and operations
+routes register explicitly from the application composition root. A
+third-party router is not part of the initial platform.
+
+Database migrations continue through the explicit
+`golang-migrate/migrate/v4` command accepted by ADR-040. API startup never
+runs migrations.
+
 ## 10.1 API Surfaces
 
 Use separate route groups:
@@ -626,23 +636,37 @@ Introduce a broker only when throughput, delivery topology, or service extractio
 
 ### Storefront
 
-Possible models:
+Phase 1 browsing and checkout are guest-accessible. Purchase creation returns a
+random opaque Purchase access token once and stores only its SHA-256 hash.
+Tracking, cancellation, and evidence submission require that token as a Bearer
+credential and remain scoped to one Purchase.
 
-- email or phone OTP;
-- passwordless account;
-- account plus guest purchase;
-- external identity provider.
-
-Final choice remains a product decision.
+The Purchase token is not an operator identity, browser session, or permission
+set. Public self-service accounts remain a later product decision.
 
 ### Operations
 
-Require stronger authentication:
+Use provider-neutral OpenID Connect Authorization Code flow with PKCE. The Go
+API owns login, callback verification, operator mapping, and a revocable
+server-side browser session.
 
-- managed accounts;
-- multi-factor authentication where practical;
-- role-based access;
-- optional event or location scope.
+- Discover the configured issuer and verify the ID token's issuer, audience,
+  signature, and expiry with `github.com/coreos/go-oidc/v3/oidc`.
+- Generate and validate state, nonce, and the PKCE verifier. Nonce comparison
+  remains an explicit application check.
+- Map the verified subject to `operator_users.external_subject`; reject
+  unknown or inactive operators.
+- Store only the SHA-256 hash of a random opaque session token. Send the raw
+  token in a `Secure`, `HttpOnly`, `SameSite=Lax`, host-only cookie.
+- Snapshot only allowlisted permissions. Authenticate and authorize every
+  operations request in the backend.
+- Require an allowed Origin and `X-CSRF-Token` for unsafe
+  cookie-authenticated requests.
+- Revoke the server session on logout and expire it no later than the verified
+  identity session.
+
+The API does not implement local passwords, password recovery, or MFA. Those
+remain identity-provider responsibilities.
 
 ### Authorization Model
 
@@ -665,6 +689,9 @@ admin.manage
 ```
 
 Authorization must be enforced in application services or dedicated policy components, not only in HTTP middleware.
+
+The complete login, session, CSRF, and Purchase-token contracts are documented
+in `docs/security/AUTHENTICATION.md`.
 
 ---
 
@@ -985,23 +1012,20 @@ Core purchasing, payment eligibility, quota, and allocation should remain transa
 
 ## 23. Architecture Decisions Required
 
-Create Architecture Decision Records for:
+ADR-040 and ADR-043 resolve migration tooling, HTTP routing, Phase 1
+Storefront access, and Operations authentication. Remaining decisions include:
 
-1. HTTP framework and API conventions.
-2. Database migration tooling.
-3. Authentication model for Storefront.
-4. Authentication model for Operations.
-5. Public identifier strategy.
-6. Money representation.
-7. Outbox and background job implementation.
-8. API contract generation.
-9. Dashboard update transport: polling versus SSE.
-10. Object storage provider.
-11. Payment gateway integration.
-12. Event configuration versioning.
-13. Audit data retention.
-14. Offline or degraded event-day operation.
-15. Conditions for backend service extraction.
+1. Public identifier strategy.
+2. Money representation.
+3. Outbox and background job implementation.
+4. API contract generation.
+5. Dashboard update transport: polling versus SSE.
+6. Object storage provider.
+7. Payment gateway integration.
+8. Event configuration versioning.
+9. Audit data retention.
+10. Offline or degraded event-day operation.
+11. Conditions for backend service extraction.
 
 ---
 
@@ -1033,16 +1057,16 @@ apps/api
 
 Recommended next architecture work:
 
-1. establish API bootstrap and module registration;
-2. select HTTP router and migration tooling;
-3. implement platform database and transaction foundations;
-4. implement Event, Identity, Offering, and Purchasing foundations;
-5. define OpenAPI conventions;
-6. add authentication and authorization baseline;
-7. establish outbox and audit foundations;
-8. deliver the first vertical slice:
+1. establish transaction boundaries and explicit module registration around
+   `http.ServeMux`;
+2. implement the accepted OIDC session, CSRF, permissions, and Purchase-token
+   foundations;
+3. implement Event, Identity, Offering, and Purchasing foundations;
+4. define OpenAPI conventions;
+5. establish outbox and audit foundations;
+6. deliver the first vertical slice:
    common purchase → payment verification → Sohibul Qurban activation;
-9. add operations dashboard projections after transactional records exist.
+7. add operations dashboard projections after transactional records exist.
 
 This sequence builds executable product capability while preserving the option to refine Figma flows and operational requirements.
 

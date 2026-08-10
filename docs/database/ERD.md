@@ -749,6 +749,206 @@ by status and history.
 - Foreign keys/constraints: namespace/key required; no business FK because one table serves multiple command modules.
 - Indexes: expiry cleanup and namespace lookup.
 
+## Idempotency ownership audit
+
+Idempotency protects a business command from being executed more than once when
+the caller, network, worker, or provider retries the same intent. It is not a
+column convention for every entity. The application command owns replay
+semantics; PostgreSQL constraints and effect-level keys provide the final
+duplicate guards.
+
+### Mechanism taxonomy
+
+| Mechanism                                | Owns                                                                                                  | Does not replace                                         |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `idempotency_records`                    | API command claim, request-hash validation, and response replay                                       | Domain validation, authorization, or concurrency control |
+| Direct effect key                        | Duplicate prevention for one append-only financial effect                                             | Command response replay                                  |
+| Natural unique constraint                | Business identity such as event/code, source conversion, provider reference, or one active assignment | Replaying the original status and response               |
+| Version, row lock, or conditional update | Stale-write and contested-capacity protection                                                         | Duplicate request detection                              |
+| Parent transaction                       | Exactly-once creation of histories, audit rows, and outbox events for one accepted command            | At-least-once consumer deduplication                     |
+| Event/consumer identity                  | Duplicate-safe outbox, projection, and notification consumption                                       | HTTP request replay                                      |
+
+The baseline therefore keeps a direct `idempotency_key` only on
+`financial_ledger_entries`. Other retry-sensitive aggregates use the shared
+`idempotency_records` table and keep their existing natural constraints.
+
+### Entity-by-entity classification
+
+#### Identity and event foundation
+
+| Table             | Retry-sensitive process                                | Idempotency ownership and database guard                                                                                                                     | Direct key |
+| ----------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| `operator_users`  | Authentication-subject synchronization                 | Upsert or lookup by unique `external_subject`. Provider synchronization may use its external event identity, not an aggregate column.                        | No         |
+| `parties`         | Public registration, assisted creation, or import      | Use command replay when the creation request can retry. Email/phone lookup and future duplicate detection are identity rules, not idempotency.               | No         |
+| `qurban_events`   | Event creation and lifecycle transition                | Unique `event_year` prevents duplicate annual identity. Retried create/publish commands may use shared replay; contested transitions need an expected state. | No         |
+| `event_locations` | Location creation                                      | Unique `(event_id, code)` is the natural duplicate guard. Use shared replay only when the command contract promises retry replay.                            | No         |
+| `offerings`       | Offering creation, publication, or availability change | Unique `(event_id, code)` protects identity. Lifecycle commands still validate expected state; they do not need a per-row idempotency key.                   | No         |
+
+#### Commerce and funding
+
+| Table                           | Retry-sensitive process                                                                              | Idempotency ownership and database guard                                                                                                                                                                                         | Direct key |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `saving_accounts`               | Account creation and saving-to-purchase conversion                                                   | Public creation and conversion use shared command replay. `account_ref` protects identity, `version` protects stale writes, and unique `purchases.saving_account_id` guarantees one conversion result.                           | No         |
+| `giveaway_programs`             | Program creation and sponsor-funding commands                                                        | Program identity uses unique `(event_id, code)`. Financial effects use ledger entry keys; retried program commands use shared replay only when declared retry-sensitive.                                                         | No         |
+| `giveaway_applications`         | Applicant or nominee submission                                                                      | Public submission uses shared command replay so a timeout cannot create a second application. `application_ref` is identity; duplicate-person policy remains a separate product rule.                                            | No         |
+| `giveaway_assignments`          | Approval, recipient assignment, and funded-purchase creation                                         | Shared replay owns the command. Unique `(program_id, application_id)` and `(program_id, recipient_party_id)` prevent duplicate assignment. Unique `purchases.giveaway_assignment_id` guarantees one resulting purchase.          | No         |
+| `purchases`                     | Common purchase creation, channel conversion, confirmation, cancellation, and eligibility transition | Creation and conversion require shared replay. `purchase_ref` and the saving/giveaway source indexes are final duplicate guards; `version` protects contested updates.                                                           | No         |
+| `purchase_status_history`       | Purchase transition history                                                                          | Inserted once in the purchase command transaction. A direct key could hide a duplicated parent command instead of fixing it.                                                                                                     | No         |
+| `sohibul_qurban`                | Participant activation or replacement after purchase eligibility                                     | Activation/replacement uses shared replay. Unique `participant_ref` and `(purchase_id, sequence_no)` prevent duplicate participant positions.                                                                                    | No         |
+| `sohibul_qurban_status_history` | Participant transition history                                                                       | Inserted once with the participant command, audit record, and outbox event.                                                                                                                                                      | No         |
+| `payment_records`               | Evidence submission, provider callback, verification, rejection, and refund                          | Shared replay owns public/operator commands. Provider callbacks use authenticated provider event identity when available; unique `provider_reference` is the current natural transaction guard.                                  | No         |
+| `payment_status_history`        | Payment transition history                                                                           | Inserted once in the payment command transaction. Duplicate callbacks must not append duplicate history.                                                                                                                         | No         |
+| `financial_ledger_entries`      | Payment, installment, sponsor funding, refund, transfer, and adjustment effects                      | Every retry-sensitive ledger-producing command derives one unique effect key per entry. The partial unique index is the final append-only duplicate guard. Multi-entry commands derive stable leg suffixes from one command key. | Yes        |
+
+#### Livestock, allocation, and event operations
+
+| Table                         | Retry-sensitive process                                                                  | Idempotency ownership and database guard                                                                                                                                                           | Direct key |
+| ----------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| `livestock`                   | Registration/import and lifecycle transition                                             | Retried registration/import may use shared replay. Unique event/code and tag constraints protect physical identity; `version` protects stale lifecycle writes.                                     | No         |
+| `livestock_inspections`       | Submission of one inspection observation                                                 | Shared replay identifies one submitted observation. A genuinely new inspection uses a new key because repeated observations are valid domain records.                                              | No         |
+| `livestock_status_history`    | Livestock lifecycle history                                                              | Inserted once in the owning lifecycle transaction.                                                                                                                                                 | No         |
+| `livestock_location_history`  | Move or pen-assignment command                                                           | Shared replay protects one move. The one-unreleased-row index and a transaction protect current location; a new physical move uses a new key.                                                      | No         |
+| `allocations`                 | Provisional allocation, confirmation, release, reassignment, and override                | Shared replay is required. `allocation_ref` and the active-participant index prevent duplicate claims; `version` plus a livestock row lock or atomic capacity calculation protects total capacity. | No         |
+| `allocation_status_history`   | Allocation transition history                                                            | Inserted once with allocation state, authorization reason, audit row, and outbox event.                                                                                                            | No         |
+| `slaughter_sessions`          | Session creation and lifecycle transition                                                | Unique `session_ref` protects identity. Shared replay is conditional for retryable scheduling commands; expected state protects transitions.                                                       | No         |
+| `slaughter_stations`          | Station creation within a session                                                        | Unique `(session_id, code)` is the natural duplicate guard.                                                                                                                                        | No         |
+| `slaughter_records`           | Queue creation, check-in, milestone update, hold, cancellation, and completion           | Field commands use shared replay. Unique `(event_id, livestock_id)` prevents a second execution record and `version` protects contested milestones.                                                | No         |
+| `distribution_records`        | Distribution creation, preparation, collection/delivery completion, failure, or reversal | Retry-sensitive commands use shared replay and unique `distribution_ref`. Status updates require a row lock or conditional expected-state update because this baseline has no `version` column.    | No         |
+| `distribution_status_history` | Distribution transition history                                                          | Inserted once in the distribution command transaction.                                                                                                                                             | No         |
+
+#### Platform integrity
+
+| Table                 | Retry-sensitive process                              | Idempotency ownership and database guard                                                                                                                              | Direct key       |
+| --------------------- | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `audit_log`           | Recording a privileged or sensitive accepted command | Written once with the owning command. `request_id` is correlation metadata and must not be used as the replay key because retries may have different request IDs.     | No               |
+| `outbox_events`       | Durable handoff and at-least-once delivery           | Produced once with the domain transaction. `id` is the delivery identity; each consumer deduplicates by event and consumer or performs a naturally idempotent update. | No               |
+| `idempotency_records` | Generic retry-sensitive API command                  | Owns namespace/key claim, request hash, stored response, and expiry. The composite primary key serializes duplicate claims without a business FK.                     | Owns generic key |
+
+`schema_migrations` and `schema_seeds` are lifecycle metadata outside the
+business ERD. Migration version state and seed-name history already make their
+respective tooling repeat-safe; they do not use business idempotency records.
+
+### Process ownership matrix
+
+| Process                                                                        | Key policy                                                                          | Atomic writes and final guards                                                                                                                                                                                  |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Common purchase creation                                                       | Required; reuse for retries of one checkout intent                                  | Idempotency record, purchase, initial history, audit when assisted/privileged, and outbox event. Purchase reference and quota transaction remain independent guards.                                            |
+| Saving account creation                                                        | Required for public or integration retries                                          | Idempotency record and saving account. `account_ref` is the natural identity.                                                                                                                                   |
+| Installment/payment submission                                                 | Required                                                                            | Idempotency record, payment record, and outbox event. A verified financial effect later receives a derived ledger entry key.                                                                                    |
+| Saving conversion                                                              | Required                                                                            | Lock/version-check saving account; create one purchase through unique `saving_account_id`; write saving/purchase state, histories, audit where privileged, ledger effects when applicable, and outbox together. |
+| Giveaway application submission                                                | Required for public submission                                                      | Idempotency record and application. Duplicate-recipient evaluation remains a separate domain rule.                                                                                                              |
+| Giveaway approval and assignment                                               | Required                                                                            | Application/assignment state, one assignment, resulting purchase when eligible, histories, privileged audit, and outbox in one transaction.                                                                     |
+| Payment evidence submission                                                    | Required                                                                            | Idempotency record, payment record, and outbox event; evidence storage itself remains an adapter concern.                                                                                                       |
+| Payment verification, rejection, or refund                                     | Required                                                                            | Lock/version or expected-state check payment; update status; append history, ledger effect with derived key, audit, and outbox atomically.                                                                      |
+| Payment-provider callback                                                      | Required by provider event identity when available                                  | Authenticate first; deduplicate provider event; update payment and ledger atomically; tolerate duplicate and reordered events. Provider inbox schema remains deferred.                                          |
+| Financial adjustment or transfer                                               | Required                                                                            | One command record plus a unique derived key for every append-only ledger entry; transfer legs share a correlation reference but not the same unique entry key.                                                 |
+| Sohibul Qurban activation or replacement                                       | Required                                                                            | Participant row/state, status history, privileged audit where applicable, and outbox event in one transaction.                                                                                                  |
+| Livestock registration/import                                                  | Required for retried or batch ingestion; conditional for non-retrying internal CRUD | Idempotency record plus unique livestock code/tag. A genuinely different physical animal must have a different business identity and key.                                                                       |
+| Inspection, location, or livestock-status command                              | Required when field/network retry is possible                                       | Idempotency record, expected-state or version guard, observation/history row, audit where privileged, and outbox. New real-world observations use new keys.                                                     |
+| Allocation create, confirm, release, reassign, or override                     | Required                                                                            | Idempotency record, livestock lock/capacity calculation, allocation version/constraint, history, reasoned audit for override, and outbox atomically.                                                            |
+| Slaughter queue and milestone update                                           | Required for field commands                                                         | Idempotency record, unique slaughter record, version/expected-state update, history through authoritative state, audit for overrides, and outbox.                                                               |
+| Distribution create or status transition                                       | Required for completion/reversal and retrying field commands                        | Idempotency record, unique distribution reference, expected-state update, history, audit for reversal, and outbox.                                                                                              |
+| Configuration CRUD for event, location, offering, program, session, or station | Conditional                                                                         | Prefer natural keys and expected-state validation. Add replay only when the API contract accepts automatic/client retries and promises the original response.                                                   |
+| Outbox, projection, notification, or integration consumption                   | Do not use HTTP `Idempotency-Key`                                                   | Deduplicate with `(consumer, event_id)` receipt state or a naturally idempotent target upsert. Notification and generic consumer receipt tables are deferred.                                                   |
+
+### Command replay lifecycle
+
+```text
+authenticate and authorize
+        ↓
+resolve command namespace and caller scope
+        ↓
+canonicalize and hash material request intent
+        ↓
+BEGIN
+        ↓
+insert (namespace, idempotency_key, request_hash)
+        ├── new claim → validate and lock authoritative state
+        │              → mutate aggregate
+        │              → append history, audit, and outbox
+        │              → store response status/body
+        │              → COMMIT
+        └── conflict  → compare request_hash
+                       ├── same → replay stored status/body
+                       └── different → 409 Conflict
+```
+
+Authorization occurs before replay so a guessed key cannot expose another
+caller's response. The namespace binds the API surface, command, and stable
+caller scope. The request hash includes the API version, command identity, path
+parameters, and canonical business payload; it excludes correlation IDs,
+tracing headers, and transport-only timestamps.
+
+The initial contract stores successful mutation responses. Validation,
+authorization, stale-state conflicts, timeouts, and transient infrastructure
+failures do not become completed replay records. The response status and JSON
+body are replayed; per-attempt correlation headers and logs are regenerated.
+
+The idempotency claim, business writes, histories, audit row, outbox events, and
+stored response commit in one transaction. A concurrent insert waits on or
+conflicts with the composite primary key and then replays the winning result. If
+the winning transaction rolls back, its claim and business effects both
+disappear, allowing a later attempt to execute normally.
+
+### Key generation and reuse rules
+
+- Generate a high-entropy opaque key at the client or trusted integration
+  boundary.
+- Reuse that key only for retries of the same user or provider intent.
+- Generate a new key when the user starts a new purchase, submits a new
+  inspection, performs another real move, or intentionally repeats an action.
+- Keep `request_id` separate: every transport attempt may have a new request ID
+  while sharing one idempotency key.
+- Do not use generated business references such as `purchase_ref` as replay
+  keys unless a future contract explicitly makes the caller own that reference.
+- For a command that creates multiple ledger entries, derive stable per-entry
+  keys such as command-key plus a leg discriminator; the entries share
+  `correlation_ref` for reconciliation.
+
+### Development ownership
+
+| Layer                        | Responsibility                                                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| HTTP transport               | Parse and validate `Idempotency-Key` only on declared retry-sensitive commands; keep public and operations contracts separate.    |
+| Authentication/authorization | Establish caller scope and permission before lookup or replay.                                                                    |
+| Application command          | Define namespace, canonical request hash, replayable outcome, transaction boundary, and required audit/outbox writes.             |
+| Domain                       | Enforce business invariants without depending on HTTP headers or the idempotency storage table.                                   |
+| PostgreSQL adapter           | Claim the composite key, load/replay completed records, persist the response, and surface hash mismatch or concurrent completion. |
+| Financial repository         | Derive and enforce one stable effect key per ledger entry.                                                                        |
+| Worker/consumer              | Use event identity and consumer-specific deduplication or naturally idempotent target writes.                                     |
+| Frontend/integration client  | Reuse one key across retries of the same intent; create a new key for a new intent.                                               |
+
+### Required verification scenarios
+
+Every retry-sensitive vertical slice must test:
+
+1. first request creates one business effect and one replay record;
+2. same key and same payload returns the original result without new domain,
+   history, audit, ledger, or outbox rows;
+3. same key and different payload returns a conflict;
+4. two concurrent requests produce one accepted effect;
+5. rollback leaves neither a replay record nor partial business effects;
+6. stale aggregate versions still return a domain conflict;
+7. an unauthorized caller cannot replay another caller's result;
+8. a multi-entry financial command creates each leg once;
+9. duplicate and reordered provider events do not repeat payment or ledger
+   effects;
+10. duplicate outbox delivery does not repeat the consumer side effect.
+
+### Deferred schema decisions
+
+- Generic response-record retention and command-specific `expires_at` values.
+- Stable caller scoping for unauthenticated Storefront commands.
+- Payment-provider name, event identity, payload retention, and webhook inbox
+  schema. The current globally unique `provider_reference` is not enough to
+  model multiple providers or multiple provider events without a provider
+  contract.
+- Notification attempt and delivery-deduplication tables.
+- Generic `(consumer, event_id)` receipt storage where a naturally idempotent
+  consumer target is insufficient.
+- Whether distribution requires a `version` column after its field workflow and
+  contested-transition behavior are confirmed.
+
 ## Current, target, and deferred state
 
 ### EXISTING

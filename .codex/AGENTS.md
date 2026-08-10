@@ -62,6 +62,13 @@ Document responsibilities:
 `.codex/TASK.md` is the active task file. Completed tasks are historical
 records under `.codex/archive/` and must not remain as the active task.
 
+`.codex/plans/` may contain inactive future-task drafts. A draft is neither
+active nor approved for execution merely because it exists. Before activation,
+revalidate its dependencies, decisions, file paths, and acceptance criteria
+against current canonical documents and source, then copy exactly one reviewed
+draft into `.codex/TASK.md`. Execute only the active task and archive only an
+executed `.codex/TASK.md`; do not archive unexecuted drafts.
+
 When documents conflict, use this priority:
 
 ```text
@@ -333,6 +340,7 @@ Agent operating context:
 ├── AGENTS.md
 ├── CURRENT_STATE.md
 ├── TASK.md                 # active task only
+├── plans/                  # inactive future-task drafts
 └── archive/                # executed task records
     └── YYYY-MM-DD-TASK-<h1>.md
 ```
