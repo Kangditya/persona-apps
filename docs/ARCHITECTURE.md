@@ -511,9 +511,16 @@ Avoid distributed transactions. Use an outbox pattern for post-transaction integ
 
 ## 10.0 HTTP Server
 
-Use the standard library's method-aware `http.ServeMux`. Public and operations
-routes register explicitly from the application composition root. A
-third-party router is not part of the initial platform.
+Use `github.com/gin-gonic/gin` as the canonical HTTP framework and router at
+the HTTP adapter/bootstrap boundary. Build the engine with `gin.New()`, attach
+explicit middleware, and register separate public and Operations route groups.
+The standard library remains the server/runtime foundation: `http.Server`,
+`context.Context`, status constants, headers, cookies, and graceful shutdown
+remain valid below or beside the Gin edge.
+
+Gin must not cross into application, domain, repository, or persistence
+packages. Route handlers map HTTP inputs to framework-neutral application
+inputs and propagate `c.Request.Context()`.
 
 Database migrations continue through the explicit
 `golang-migrate/migrate/v4` command accepted by ADR-040. API startup never
@@ -547,6 +554,7 @@ Public and operations APIs may share application services but must have separate
 - structured errors;
 - request correlation identifier;
 - idempotency key for retry-sensitive commands;
+- encrypted at-rest replay envelopes for responses containing a raw credential;
 - no leaking database column names as accidental contracts;
 - OpenAPI specification as the contract baseline.
 
@@ -1060,7 +1068,7 @@ apps/api
 Recommended next architecture work:
 
 1. establish transaction boundaries and explicit module registration around
-   `http.ServeMux`;
+   the Gin route groups;
 2. implement the accepted OIDC session, CSRF, permissions, and Purchase-token
    foundations;
 3. implement Event, Identity, Offering, and Purchasing foundations;

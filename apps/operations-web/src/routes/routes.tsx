@@ -8,17 +8,23 @@ import { PurchasingPage } from "../pages/PurchasingPage";
 import { paths } from "./paths";
 
 export function AppRoutes() {
-  return (
-    <Routes>
-      <Route element={<OperationsLayout />}>
-        <Route path={paths.operatorLogin} element={<OperatorLoginPage />} />
-        <Route path={paths.eventDashboard} element={<EventDashboardPage />} />
-        <Route path={paths.purchasing} element={<PurchasingPage />} />
-        <Route
-          path={paths.paymentVerification}
-          element={<PaymentVerificationPage />}
-        />
-      </Route>
-    </Routes>
-  );
+    return (
+        <Routes>
+            <Route element={<OperationsLayout />}>
+                <Route
+                    path={paths.operatorLogin}
+                    element={<OperatorLoginPage />}
+                />
+                <Route
+                    path={paths.eventDashboard}
+                    element={<EventDashboardPage />}
+                />
+                <Route path={paths.purchasing} element={<PurchasingPage />} />
+                <Route
+                    path={paths.paymentVerification}
+                    element={<PaymentVerificationPage />}
+                />
+            </Route>
+        </Routes>
+    );
 }

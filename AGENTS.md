@@ -20,10 +20,13 @@ Read these canonical documents before planning or implementation:
 - `docs/PRODUCT_MAP.md` — capabilities, application ownership, and roadmap;
 - `docs/ARCHITECTURE.md` — runtime, boundaries, data, API, and deployment architecture;
 - `docs/DECISIONS.md` — accepted and superseded decisions;
+- `docs/CONVENTIONS.md` — engineering implementation rules, defaults, and enforcement;
 - `.codex/CURRENT_STATE.md` — implementation state and known gaps;
 - `.codex/TASK.md` — current task constraints.
 
 `.codex/` contains agent execution context, not canonical product or architecture documents.
+`docs/CONVENTIONS.md` applies those canonical boundaries; it does not override
+product requirements, architecture, or accepted decisions.
 
 `.codex/TASK.md` is the active task file. Completed tasks are historical
 records under `.codex/archive/` and must not remain as the active task.

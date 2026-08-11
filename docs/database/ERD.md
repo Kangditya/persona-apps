@@ -982,6 +982,8 @@ The initial contract stores successful mutation responses. Validation,
 authorization, stale-state conflicts, timeouts, and transient infrastructure
 failures do not become completed replay records. The response status and JSON
 body are replayed; per-attempt correlation headers and logs are regenerated.
+When the body contains raw credential material, response_body stores the
+ADR-045 encrypted envelope rather than plaintext.
 
 The idempotency claim, business writes, histories, audit row, outbox events, and
 stored response commit in one transaction. A concurrent insert waits on or

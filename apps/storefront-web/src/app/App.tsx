@@ -5,11 +5,11 @@ import { AppRoutes } from "../routes/routes";
 import { queryClient } from "./queryClient";
 
 export function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </QueryClientProvider>
-  );
+    return (
+        <QueryClientProvider client={queryClient}>
+            <BrowserRouter>
+                <AppRoutes />
+            </BrowserRouter>
+        </QueryClientProvider>
+    );
 }

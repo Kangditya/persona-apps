@@ -85,6 +85,9 @@ refresh token because Phase 1 does not call provider APIs after login.
 - Event and Offering reads plus Purchase creation are guest-accessible.
 - Purchase creation generates at least 32 random bytes, returns the opaque
   access token once, and stores only its SHA-256 hash.
+- Checkout has an ADR-041 replay contract. Because the replay body contains
+  the raw token, its `idempotency_records.response_body` value is an ADR-045
+  AES-256-GCM envelope, never plaintext.
 - Tracking, cancellation, and payment-evidence submission send
   `Authorization: Bearer <purchase-token>`.
 - Validate the token against the identified Purchase using constant-time hash
@@ -108,8 +111,11 @@ W1-06 and W1-07 must validate names equivalent to:
 - `OIDC_CLIENT_SECRET`
 - `OIDC_REDIRECT_URL`
 - `OIDC_PERMISSION_CLAIM`
+- `OPERATIONS_WEB_ORIGIN`
 - `OPERATIONS_ALLOWED_ORIGINS`
 - `AUTH_COOKIE_ENCRYPTION_KEY`
+- `IDEMPOTENCY_RESPONSE_KEYS`
+- `OPERATIONS_SESSION_MAX_LIFETIME`
 
 Values are environment secrets or deployment configuration and must not be
 committed. Redirect URLs and allowed origins must use HTTPS outside local

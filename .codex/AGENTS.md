@@ -44,6 +44,7 @@ docs/PRD.md
 docs/PRODUCT_MAP.md
 docs/ARCHITECTURE.md
 docs/DECISIONS.md
+docs/CONVENTIONS.md
 .codex/CURRENT_STATE.md
 .codex/TASK.md
 ```
@@ -56,11 +57,16 @@ Document responsibilities:
 | `docs/PRODUCT_MAP.md` | Capability hierarchy, roadmap, application ownership, and open requirements |
 | `docs/ARCHITECTURE.md` | Technical boundaries, runtime, data, API, and deployment architecture |
 | `docs/DECISIONS.md` | Accepted and superseded architecture decisions |
+| `docs/CONVENTIONS.md` | Engineering implementation rules, defaults, and enforcement |
 | `.codex/CURRENT_STATE.md` | Current implementation state and known gaps |
 | `.codex/TASK.md` | Current implementation objective and task-specific constraints |
 
 `.codex/TASK.md` is the active task file. Completed tasks are historical
 records under `.codex/archive/` and must not remain as the active task.
+
+`docs/CONVENTIONS.md` applies the established product, architecture, and
+decision boundaries. Keep it as the canonical engineering rulebook instead of
+duplicating broad implementation rules here.
 
 `.codex/plans/` may contain inactive future-task drafts. A draft is neither
 active nor approved for execution merely because it exists. Before activation,
@@ -69,17 +75,19 @@ against current canonical documents and source, then copy exactly one reviewed
 draft into `.codex/TASK.md`. Execute only the active task and archive only an
 executed `.codex/TASK.md`; do not archive unexecuted drafts.
 
-When documents conflict, use this priority:
+When documents conflict, use this authority model:
 
 ```text
-Current TASK
-→ Accepted decisions
+PRD and Product Map
 → Architecture
-→ PRD and Product Map
-→ Existing implementation
+→ Accepted decisions
+→ Conventions for implementation defaults
+→ Existing implementation and state records
 ```
 
-Do not silently resolve material conflicts. Record them as plan risks or decision gaps.
+The current TASK defines the approved work scope but cannot silently override
+an accepted product, architecture, or decision document. Do not silently
+resolve material conflicts; record them as plan risks or decision gaps.
 
 ---
 
@@ -164,6 +172,7 @@ Before planning:
    - `.codex/AGENTS.md` when present;
    - `.codex/TASK.md`;
    - `.codex/CURRENT_STATE.md`;
+   - `docs/CONVENTIONS.md` when present;
    - the relevant sections of canonical documents under `docs/`.
 
 2. Inspect only files relevant to the task.
@@ -560,7 +569,8 @@ Use:
 - Go;
 - modular monolith architecture;
 - PostgreSQL;
-- standard-library-compatible HTTP architecture;
+- Gin as the canonical HTTP framework and router at the HTTP adapter/bootstrap
+  boundary, with net/http retained for server lifecycle and transport;
 - explicit domain, application, adapter, and transport boundaries.
 
 Do not introduce microservices without an accepted ADR.

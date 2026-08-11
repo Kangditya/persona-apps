@@ -63,11 +63,11 @@ test:
 
 format:
 	pnpm format
-	cd apps/api && gofmt -w .
+	cd apps/api && go run ./cmd/format -write
 
 format-check:
 	pnpm format:check
-	test -z "$$(cd apps/api && gofmt -l .)"
+	cd apps/api && go run ./cmd/format -check
 
 compose-check:
 	docker compose -f infrastructure/compose.yaml config >/dev/null

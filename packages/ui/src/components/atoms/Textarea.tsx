@@ -5,14 +5,14 @@ import { cn } from "../../lib/cn";
 export type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement>;
 
 export function Textarea({ className, ...props }: TextareaProps) {
-  return (
-    <textarea
-      data-slot="textarea"
-      className={cn(
-        "flex min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive",
-        className,
-      )}
-      {...props}
-    />
-  );
+    return (
+        <textarea
+            data-slot="textarea"
+            className={cn(
+                "flex min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive",
+                className,
+            )}
+            {...props}
+        />
+    );
 }

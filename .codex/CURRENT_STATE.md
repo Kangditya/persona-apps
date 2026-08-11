@@ -160,19 +160,22 @@ Current backend capabilities:
 
 No qurban domain modules exist yet.
 
-Selected but not implemented platform foundations:
+Implemented platform foundations:
 
-- standard-library `http.ServeMux` as the sole HTTP router;
+- Gin as the canonical HTTP framework and router at the HTTP adapter/bootstrap
+  boundary, with `net/http.Server` retained for lifecycle and transport;
 - the existing ADR-040 `golang-migrate/migrate/v4` database lifecycle;
-- provider-neutral Operations OIDC Authorization Code with PKCE;
+- provider-neutral Operations OIDC Authorization Code with PKCE when complete
+  OIDC configuration is supplied;
 - hashed, revocable server-side Operations sessions with permission snapshots,
-  Origin checks, and CSRF protection;
-- guest Storefront access with hashed Purchase-scoped Bearer tokens.
+  exact Origin checks, CSRF protection, and allowlisted permissions;
+- request-ID middleware, structured error envelopes, transaction helper,
+  caller-transaction audit writer, and encrypted idempotency replay executor.
 
-ADR-043 and `docs/security/AUTHENTICATION.md` define these contracts. The OIDC
-and OAuth2 libraries are not dependencies yet. Migration 0005 scripts
-auth/session and Purchase-token hash storage, but no login, callback, session,
-CSRF, permission, or Purchase-token runtime exists.
+ADR-043 through ADR-045 define these contracts. The API has no business
+handlers yet: Storefront Purchase access and all domain command use of the
+platform remain unimplemented. Auth routes exist only when the complete
+fail-closed configuration is present; no secret value is committed.
 
 ### Infrastructure
 
@@ -182,21 +185,29 @@ Implemented:
 - configurable PostgreSQL host port;
 - local environment bootstrap;
 - container configuration validation.
+- provider-neutral staging deployment contract;
+- CI PostgreSQL 18 migration, reference-seed idempotency, database-test,
+  bounded rollback, and reapply coverage.
+
+No cloud environment or production deployment configuration is implemented.
 
 ### Contracts and Shared Packages
 
-Implemented as placeholders or shells:
+Implemented as contracts, placeholders, or shells:
 
-- OpenAPI contract locations;
+- separate Storefront and Operations OpenAPI contracts for the Phase 1
+  catalogue, common Purchase, OIDC session, Event, Offering, payment-review,
+  participant, dashboard, and audit surfaces;
 - shared workspace packages;
 - frontend TypeScript configuration;
 - API client package shell;
 - shared UI package with tokens and accessible primitives;
 - application-owned PWA manifests and service-worker configuration.
 
-No meaningful qurban API contract has been implemented.
-The separate public and operations OpenAPI contracts remain endpoint-free; no
-route data requirement or query key is implemented yet.
+The separate public and operations OpenAPI contracts now define Phase 1
+request, response, permission, request-ID, CSRF, idempotency, and error
+behavior. They remain contract-only: no business route, client, or frontend
+query implementation exists yet.
 
 ### Database lifecycle tooling
 
@@ -590,12 +601,14 @@ These rules must not be invented during implementation.
 2. Query-key shapes, stale-time policy, mutation invalidation, and route-data
    requirements cannot be finalized until meaningful public and operations
    endpoints exist.
-3. The Go backend has no module registration pattern yet.
+3. The Go backend has platform HTTP route composition, but no business module
+   registration pattern yet.
 4. Migration tooling and SQL artifacts exist, but the migrations have not been
    executed through the runner against disposable PostgreSQL in this
    environment.
-5. No HTTP router decision has been finalized.
-6. No authentication approach has been selected.
+5. Gin is the accepted HTTP router; business endpoint modules remain deferred.
+6. OIDC-backed Operations session foundations exist; operator provisioning and
+   business-route authorization remain deferred.
 7. The proposed database domain model is documented and scripted, but no
    business vertical slice has validated its command behavior or query shape.
 
@@ -603,8 +616,8 @@ These rules must not be invented during implementation.
 
 ## Recommended Next Task
 
-Define and approve the first business vertical slice before adding routing or
-server-state runtime code. That slice must identify its route modules, the
+Define and approve the first business vertical slice on the established Gin
+route-group boundary. That slice must identify its route modules, the
 applicable separate OpenAPI contract, and the smallest required
 `@tanstack/react-query` integration.
 

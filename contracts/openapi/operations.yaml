@@ -1,6 +1,1585 @@
 openapi: 3.1.0
 info:
   title: Qurban Operations API
-  version: 0.0.0
-  description: Placeholder contract for future private operations endpoints.
-paths: {}
+  version: 1.0.0-draft
+  description: |
+    Phase 1 private Operations contract. It specifies OIDC-backed sessions,
+    permission-gated commands, and minimized administrative views only; no
+    business route in this document is implemented yet.
+servers:
+  - url: https://api.example.invalid
+    description: Deployment-specific base URL
+security: []
+tags:
+  - name: Authentication
+    description: OIDC-backed Operations sessions and CSRF rotation.
+  - name: Events
+    description: Event administration and lifecycle transitions.
+  - name: Offerings
+    description: Offering administration and lifecycle transitions.
+  - name: Purchases
+    description: Authorized Operations purchase views.
+  - name: Payments
+    description: Authorized payment views and review commands.
+  - name: Participants
+    description: Authorized intended and activated participant views.
+  - name: Dashboard
+    description: Non-authoritative Operations projections.
+  - name: Audit
+    description: Minimized privileged audit records.
+paths:
+  /api/operations/v1/auth/login:
+    get:
+      tags: [Authentication]
+      operationId: beginOperationsLogin
+      summary: Start OIDC Authorization Code with PKCE login
+      description: Creates a short-lived authenticated-encrypted login cookie and redirects to the configured provider.
+      x-required-permission: none
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/ReturnTo"
+      responses:
+        "302":
+          description: Redirect to the configured OpenID Connect provider.
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+            Location: { schema: { type: string, format: uri } }
+            Set-Cookie: { schema: { type: string } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/operations/v1/auth/callback:
+    get:
+      tags: [Authentication]
+      operationId: completeOperationsLogin
+      summary: Complete OIDC login callback
+      description: Validates provider response, state, nonce, PKCE, issuer, audience, and active operator mapping before creating a server session.
+      x-required-permission: none
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+        - name: code
+          in: query
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 4096 }
+        - name: state
+          in: query
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 4096 }
+        - name: error
+          in: query
+          required: false
+          schema: { type: string, maxLength: 255 }
+      responses:
+        "302":
+          description: Redirect to the validated relative return path after setting the Operations session cookie.
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+            Location: { schema: { type: string } }
+            Set-Cookie: { schema: { type: string } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/operations/v1/auth/session:
+    get:
+      tags: [Authentication]
+      operationId: getOperationsSession
+      summary: Inspect the authenticated session and rotate CSRF protection
+      security: [{ OperationsSession: [] }]
+      x-required-permission: none
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+      responses:
+        "200": { $ref: "#/components/responses/SessionResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/operations/v1/auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logoutOperationsSession
+      summary: Revoke the authenticated session
+      description: Repeated logout is harmless. This endpoint does not use command idempotency.
+      security: [{ OperationsSession: [] }]
+      x-required-permission: none
+      x-csrf: required
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/CSRFToken"
+      responses:
+        "204":
+          description: Session revoked and cookie expired.
+          headers:
+            X-Request-ID: { $ref: "#/components/headers/RequestID" }
+            Set-Cookie: { schema: { type: string } }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/events:
+    get:
+      tags: [Events]
+      operationId: listEvents
+      summary: List events
+      description: Cursor pagination defaults to event_year descending, then id ascending.
+      security: [{ OperationsSession: [] }]
+      x-required-permission: event.read
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200": { $ref: "#/components/responses/EventListResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [Events]
+      operationId: createEvent
+      summary: Create a draft event
+      security: [{ OperationsSession: [] }]
+      x-required-permission: event.manage
+      x-csrf: required
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/EventInput" } },
+          }
+      responses:
+        "201": { $ref: "#/components/responses/EventResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/CommandConflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/events/{event_id}:
+    get:
+      tags: [Events]
+      operationId: getEvent
+      summary: Get an event
+      security: [{ OperationsSession: [] }]
+      x-required-permission: event.read
+      parameters:
+        - $ref: "#/components/parameters/EventID"
+        - $ref: "#/components/parameters/RequestID"
+      responses:
+        "200": { $ref: "#/components/responses/EventResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    patch:
+      tags: [Events]
+      operationId: updateEvent
+      summary: Update a non-lifecycle event field
+      description: Lifecycle status changes use the explicit transition commands.
+      security: [{ OperationsSession: [] }]
+      x-required-permission: event.manage
+      x-csrf: required
+      parameters:
+        - $ref: "#/components/parameters/EventID"
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/EventPatch" } },
+          }
+      responses:
+        "200": { $ref: "#/components/responses/EventResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/CommandConflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/events/{event_id}/publish:
+    $ref: "#/components/pathItems/EventPublish"
+  /api/operations/v1/events/{event_id}/activate:
+    $ref: "#/components/pathItems/EventActivate"
+  /api/operations/v1/events/{event_id}/suspend:
+    $ref: "#/components/pathItems/EventSuspend"
+  /api/operations/v1/events/{event_id}/close:
+    $ref: "#/components/pathItems/EventClose"
+  /api/operations/v1/events/{event_id}/archive:
+    $ref: "#/components/pathItems/EventArchive"
+  /api/operations/v1/events/{event_id}/offerings:
+    get:
+      tags: [Offerings]
+      operationId: listEventOfferings
+      summary: List offerings for an event
+      description: Cursor pagination defaults to code ascending, then id ascending.
+      security: [{ OperationsSession: [] }]
+      x-required-permission: offering.read
+      parameters:
+        - $ref: "#/components/parameters/EventID"
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200": { $ref: "#/components/responses/OfferingListResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    post:
+      tags: [Offerings]
+      operationId: createOffering
+      summary: Create a draft offering for an event
+      security: [{ OperationsSession: [] }]
+      x-required-permission: offering.manage
+      x-csrf: required
+      parameters:
+        - $ref: "#/components/parameters/EventID"
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/OfferingInput" } },
+          }
+      responses:
+        "201": { $ref: "#/components/responses/OfferingResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/CommandConflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/offerings/{offering_id}:
+    get:
+      tags: [Offerings]
+      operationId: getOffering
+      summary: Get an offering
+      security: [{ OperationsSession: [] }]
+      x-required-permission: offering.read
+      parameters:
+        - $ref: "#/components/parameters/OfferingID"
+        - $ref: "#/components/parameters/RequestID"
+      responses:
+        "200": { $ref: "#/components/responses/OfferingResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    patch:
+      tags: [Offerings]
+      operationId: updateOffering
+      summary: Update a non-lifecycle offering field
+      security: [{ OperationsSession: [] }]
+      x-required-permission: offering.manage
+      x-csrf: required
+      parameters:
+        - $ref: "#/components/parameters/OfferingID"
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/CSRFToken"
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/OfferingPatch" } },
+          }
+      responses:
+        "200": { $ref: "#/components/responses/OfferingResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/CommandConflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/offerings/{offering_id}/publish:
+    $ref: "#/components/pathItems/OfferingPublish"
+  /api/operations/v1/offerings/{offering_id}/unavailable:
+    $ref: "#/components/pathItems/OfferingUnavailable"
+  /api/operations/v1/offerings/{offering_id}/archive:
+    $ref: "#/components/pathItems/OfferingArchive"
+  /api/operations/v1/purchases:
+    get:
+      tags: [Purchases]
+      operationId: listPurchases
+      summary: List purchases
+      description: Cursor pagination defaults to created_at descending, then id ascending.
+      security: [{ OperationsSession: [] }]
+      x-required-permission: purchase.read
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: event_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema:
+            { type: string, enum: [PENDING_PAYMENT, PAID, ELIGIBLE, CANCELLED] }
+      responses:
+        "200": { $ref: "#/components/responses/PurchaseListResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/purchases/{purchase_id}:
+    get:
+      tags: [Purchases]
+      operationId: getPurchase
+      summary: Get an Operations purchase view
+      security: [{ OperationsSession: [] }]
+      x-required-permission: purchase.read
+      parameters:
+        - $ref: "#/components/parameters/PurchaseID"
+        - $ref: "#/components/parameters/RequestID"
+      responses:
+        "200": { $ref: "#/components/responses/PurchaseResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/payments:
+    get:
+      tags: [Payments]
+      operationId: listPayments
+      summary: List payments
+      description: Cursor pagination defaults to submitted_at descending, then id ascending.
+      security: [{ OperationsSession: [] }]
+      x-required-permission: payment.read
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: status
+          in: query
+          required: false
+          schema:
+            { type: string, enum: [SUBMITTED, VERIFIED, REJECTED, REFUNDED] }
+      responses:
+        "200": { $ref: "#/components/responses/PaymentListResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/payments/{payment_id}:
+    get:
+      tags: [Payments]
+      operationId: getPayment
+      summary: Get an Operations payment view
+      security: [{ OperationsSession: [] }]
+      x-required-permission: payment.read
+      parameters:
+        - $ref: "#/components/parameters/PaymentID"
+        - $ref: "#/components/parameters/RequestID"
+      responses:
+        "200": { $ref: "#/components/responses/PaymentResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/payments/{payment_id}/verify:
+    post:
+      tags: [Payments]
+      operationId: verifyPayment
+      summary: Verify submitted payment evidence
+      description: Locks and revalidates Payment, Purchase, amount, currency, and quota before atomic activation.
+      security: [{ OperationsSession: [] }]
+      x-required-permission: payment.verify
+      x-csrf: required
+      x-idempotency:
+        namespace: operations.payment.verify
+        replay: exact request hash returns the original successful response after authorization
+        mismatch: idempotency_conflict
+      parameters:
+        - $ref: "#/components/parameters/PaymentID"
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/CSRFToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "200": { $ref: "#/components/responses/PaymentActionResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/CommandConflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+        "503": { $ref: "#/components/responses/ServiceUnavailable" }
+  /api/operations/v1/payments/{payment_id}/reject:
+    post:
+      tags: [Payments]
+      operationId: rejectPayment
+      summary: Reject submitted payment evidence
+      description: Rejection requires an auditable non-empty reason and releases the applicable quota reservation.
+      security: [{ OperationsSession: [] }]
+      x-required-permission: payment.verify
+      x-csrf: required
+      x-idempotency:
+        namespace: operations.payment.reject
+        replay: exact request hash returns the original successful response after authorization
+        mismatch: idempotency_conflict
+      parameters:
+        - $ref: "#/components/parameters/PaymentID"
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Origin"
+        - $ref: "#/components/parameters/CSRFToken"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/ReasonRequest" } },
+          }
+      responses:
+        "200": { $ref: "#/components/responses/PaymentActionResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/CommandConflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/participants:
+    get:
+      tags: [Participants]
+      operationId: listParticipants
+      summary: List intended and activated participants
+      description: Cursor pagination defaults to created_at descending, then id ascending.
+      security: [{ OperationsSession: [] }]
+      x-required-permission: participant.read
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: event_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { $ref: "#/components/responses/ParticipantListResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/participants/{participant_id}:
+    get:
+      tags: [Participants]
+      operationId: getParticipant
+      summary: Get a participant
+      security: [{ OperationsSession: [] }]
+      x-required-permission: participant.read
+      parameters:
+        - $ref: "#/components/parameters/ParticipantID"
+        - $ref: "#/components/parameters/RequestID"
+      responses:
+        "200": { $ref: "#/components/responses/ParticipantResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/dashboard/summary:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboardSummary
+      summary: Get the non-authoritative dashboard projection
+      security: [{ OperationsSession: [] }]
+      x-required-permission: dashboard.read
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+        - name: event_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { $ref: "#/components/responses/DashboardResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+  /api/operations/v1/audit:
+    get:
+      tags: [Audit]
+      operationId: listAuditEntries
+      summary: List minimized privileged audit records
+      description: Cursor pagination defaults to created_at descending, then id ascending.
+      security: [{ OperationsSession: [] }]
+      x-required-permission: audit.read
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+        - name: target_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { $ref: "#/components/responses/AuditListResponse" }
+        "400": { $ref: "#/components/responses/InvalidRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/InternalError" }
+components:
+  securitySchemes:
+    OperationsSession:
+      type: apiKey
+      in: cookie
+      name: __Host-operations_session
+      description: Secure, HttpOnly, SameSite=Lax server-side session. The raw token is never a response body field.
+  headers:
+    RequestID:
+      description: Accepted X-Request-ID or a generated UUID request correlation identifier.
+      required: true
+      schema:
+        {
+          type: string,
+          maxLength: 64,
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+        }
+  parameters:
+    RequestID:
+      name: X-Request-ID
+      in: header
+      required: false
+      schema:
+        {
+          type: string,
+          minLength: 1,
+          maxLength: 64,
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+        }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Opaque key reused only to retry one authorized transition.
+      schema:
+        {
+          type: string,
+          minLength: 8,
+          maxLength: 255,
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{7,254}$",
+        }
+    Origin:
+      name: Origin
+      in: header
+      required: true
+      description: Exact configured Operations Web origin; wildcard origins are forbidden.
+      schema: { type: string, format: uri, maxLength: 2048 }
+    CSRFToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string, minLength: 43, maxLength: 255 }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string, minLength: 1, maxLength: 512 }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    ReturnTo:
+      name: return_to
+      in: query
+      required: false
+      description: Relative Operations Web path only; absolute URLs and protocol-relative paths are rejected.
+      schema: { type: string, maxLength: 2048, pattern: "^/[^/].*$" }
+    EventID:
+      name: event_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OfferingID:
+      name: offering_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PurchaseID:
+      name: purchase_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PaymentID:
+      name: payment_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ParticipantID:
+      name: participant_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  pathItems:
+    EventPublish:
+      post:
+        tags: [Events]
+        operationId: publishEvent
+        summary: Publish an event
+        security: [{ OperationsSession: [] }]
+        x-required-permission: event.manage
+        x-csrf: required
+        x-idempotency:
+          {
+            namespace: operations.event.publish,
+            replay: exact authorized request,
+            mismatch: idempotency_conflict,
+          }
+        parameters:
+          - $ref: "#/components/parameters/EventID"
+          - $ref: "#/components/parameters/RequestID"
+          - $ref: "#/components/parameters/Origin"
+          - $ref: "#/components/parameters/CSRFToken"
+          - $ref: "#/components/parameters/IdempotencyKey"
+        responses:
+          "200": { $ref: "#/components/responses/EventResponse" }
+          "400": { $ref: "#/components/responses/InvalidRequest" }
+          "401": { $ref: "#/components/responses/Unauthenticated" }
+          "403": { $ref: "#/components/responses/Forbidden" }
+          "404": { $ref: "#/components/responses/NotFound" }
+          "409": { $ref: "#/components/responses/CommandConflict" }
+          "500": { $ref: "#/components/responses/InternalError" }
+    EventActivate:
+      post:
+        tags: [Events]
+        operationId: activateEvent
+        summary: Activate a published event
+        security: [{ OperationsSession: [] }]
+        x-required-permission: event.manage
+        x-csrf: required
+        x-idempotency:
+          {
+            namespace: operations.event.activate,
+            replay: exact authorized request,
+            mismatch: idempotency_conflict,
+          }
+        parameters:
+          - $ref: "#/components/parameters/EventID"
+          - $ref: "#/components/parameters/RequestID"
+          - $ref: "#/components/parameters/Origin"
+          - $ref: "#/components/parameters/CSRFToken"
+          - $ref: "#/components/parameters/IdempotencyKey"
+        responses:
+          "200": { $ref: "#/components/responses/EventResponse" }
+          "400": { $ref: "#/components/responses/InvalidRequest" }
+          "401": { $ref: "#/components/responses/Unauthenticated" }
+          "403": { $ref: "#/components/responses/Forbidden" }
+          "404": { $ref: "#/components/responses/NotFound" }
+          "409": { $ref: "#/components/responses/CommandConflict" }
+          "500": { $ref: "#/components/responses/InternalError" }
+    EventSuspend:
+      post:
+        tags: [Events]
+        operationId: suspendEvent
+        summary: Suspend the active event
+        security: [{ OperationsSession: [] }]
+        x-required-permission: event.manage
+        x-csrf: required
+        x-idempotency:
+          {
+            namespace: operations.event.suspend,
+            replay: exact authorized request,
+            mismatch: idempotency_conflict,
+          }
+        parameters:
+          - $ref: "#/components/parameters/EventID"
+          - $ref: "#/components/parameters/RequestID"
+          - $ref: "#/components/parameters/Origin"
+          - $ref: "#/components/parameters/CSRFToken"
+          - $ref: "#/components/parameters/IdempotencyKey"
+        responses:
+          "200": { $ref: "#/components/responses/EventResponse" }
+          "400": { $ref: "#/components/responses/InvalidRequest" }
+          "401": { $ref: "#/components/responses/Unauthenticated" }
+          "403": { $ref: "#/components/responses/Forbidden" }
+          "404": { $ref: "#/components/responses/NotFound" }
+          "409": { $ref: "#/components/responses/CommandConflict" }
+          "500": { $ref: "#/components/responses/InternalError" }
+    EventClose:
+      post:
+        tags: [Events]
+        operationId: closeEvent
+        summary: Close an active or suspended event
+        security: [{ OperationsSession: [] }]
+        x-required-permission: event.manage
+        x-csrf: required
+        x-idempotency:
+          {
+            namespace: operations.event.close,
+            replay: exact authorized request,
+            mismatch: idempotency_conflict,
+          }
+        parameters:
+          - $ref: "#/components/parameters/EventID"
+          - $ref: "#/components/parameters/RequestID"
+          - $ref: "#/components/parameters/Origin"
+          - $ref: "#/components/parameters/CSRFToken"
+          - $ref: "#/components/parameters/IdempotencyKey"
+        responses:
+          "200": { $ref: "#/components/responses/EventResponse" }
+          "400": { $ref: "#/components/responses/InvalidRequest" }
+          "401": { $ref: "#/components/responses/Unauthenticated" }
+          "403": { $ref: "#/components/responses/Forbidden" }
+          "404": { $ref: "#/components/responses/NotFound" }
+          "409": { $ref: "#/components/responses/CommandConflict" }
+          "500": { $ref: "#/components/responses/InternalError" }
+    EventArchive:
+      post:
+        tags: [Events]
+        operationId: archiveEvent
+        summary: Archive a closed event
+        security: [{ OperationsSession: [] }]
+        x-required-permission: event.manage
+        x-csrf: required
+        x-idempotency:
+          {
+            namespace: operations.event.archive,
+            replay: exact authorized request,
+            mismatch: idempotency_conflict,
+          }
+        parameters:
+          - $ref: "#/components/parameters/EventID"
+          - $ref: "#/components/parameters/RequestID"
+          - $ref: "#/components/parameters/Origin"
+          - $ref: "#/components/parameters/CSRFToken"
+          - $ref: "#/components/parameters/IdempotencyKey"
+        responses:
+          "200": { $ref: "#/components/responses/EventResponse" }
+          "400": { $ref: "#/components/responses/InvalidRequest" }
+          "401": { $ref: "#/components/responses/Unauthenticated" }
+          "403": { $ref: "#/components/responses/Forbidden" }
+          "404": { $ref: "#/components/responses/NotFound" }
+          "409": { $ref: "#/components/responses/CommandConflict" }
+          "500": { $ref: "#/components/responses/InternalError" }
+    OfferingPublish:
+      post:
+        tags: [Offerings]
+        operationId: publishOffering
+        summary: Publish an offering
+        security: [{ OperationsSession: [] }]
+        x-required-permission: offering.manage
+        x-csrf: required
+        x-idempotency:
+          {
+            namespace: operations.offering.publish,
+            replay: exact authorized request,
+            mismatch: idempotency_conflict,
+          }
+        parameters:
+          - $ref: "#/components/parameters/OfferingID"
+          - $ref: "#/components/parameters/RequestID"
+          - $ref: "#/components/parameters/Origin"
+          - $ref: "#/components/parameters/CSRFToken"
+          - $ref: "#/components/parameters/IdempotencyKey"
+        responses:
+          "200": { $ref: "#/components/responses/OfferingResponse" }
+          "400": { $ref: "#/components/responses/InvalidRequest" }
+          "401": { $ref: "#/components/responses/Unauthenticated" }
+          "403": { $ref: "#/components/responses/Forbidden" }
+          "404": { $ref: "#/components/responses/NotFound" }
+          "409": { $ref: "#/components/responses/CommandConflict" }
+          "500": { $ref: "#/components/responses/InternalError" }
+    OfferingUnavailable:
+      post:
+        tags: [Offerings]
+        operationId: makeOfferingUnavailable
+        summary: Mark a published offering unavailable
+        security: [{ OperationsSession: [] }]
+        x-required-permission: offering.manage
+        x-csrf: required
+        x-idempotency:
+          {
+            namespace: operations.offering.unavailable,
+            replay: exact authorized request,
+            mismatch: idempotency_conflict,
+          }
+        parameters:
+          - $ref: "#/components/parameters/OfferingID"
+          - $ref: "#/components/parameters/RequestID"
+          - $ref: "#/components/parameters/Origin"
+          - $ref: "#/components/parameters/CSRFToken"
+          - $ref: "#/components/parameters/IdempotencyKey"
+        responses:
+          "200": { $ref: "#/components/responses/OfferingResponse" }
+          "400": { $ref: "#/components/responses/InvalidRequest" }
+          "401": { $ref: "#/components/responses/Unauthenticated" }
+          "403": { $ref: "#/components/responses/Forbidden" }
+          "404": { $ref: "#/components/responses/NotFound" }
+          "409": { $ref: "#/components/responses/CommandConflict" }
+          "500": { $ref: "#/components/responses/InternalError" }
+    OfferingArchive:
+      post:
+        tags: [Offerings]
+        operationId: archiveOffering
+        summary: Archive an unavailable offering
+        security: [{ OperationsSession: [] }]
+        x-required-permission: offering.manage
+        x-csrf: required
+        x-idempotency:
+          {
+            namespace: operations.offering.archive,
+            replay: exact authorized request,
+            mismatch: idempotency_conflict,
+          }
+        parameters:
+          - $ref: "#/components/parameters/OfferingID"
+          - $ref: "#/components/parameters/RequestID"
+          - $ref: "#/components/parameters/Origin"
+          - $ref: "#/components/parameters/CSRFToken"
+          - $ref: "#/components/parameters/IdempotencyKey"
+        responses:
+          "200": { $ref: "#/components/responses/OfferingResponse" }
+          "400": { $ref: "#/components/responses/InvalidRequest" }
+          "401": { $ref: "#/components/responses/Unauthenticated" }
+          "403": { $ref: "#/components/responses/Forbidden" }
+          "404": { $ref: "#/components/responses/NotFound" }
+          "409": { $ref: "#/components/responses/CommandConflict" }
+          "500": { $ref: "#/components/responses/InternalError" }
+  responses:
+    SessionResponse:
+      description: Active session summary and rotated CSRF token.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data],
+                  properties:
+                    { data: { $ref: "#/components/schemas/Session" } },
+                },
+            },
+        }
+    EventResponse:
+      description: Event.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data],
+                  properties: { data: { $ref: "#/components/schemas/Event" } },
+                },
+            },
+        }
+    EventListResponse:
+      description: Event page.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data, page],
+                  properties:
+                    {
+                      data:
+                        {
+                          type: array,
+                          items: { $ref: "#/components/schemas/Event" },
+                        },
+                      page: { $ref: "#/components/schemas/PageInfo" },
+                    },
+                },
+            },
+        }
+    OfferingResponse:
+      description: Offering.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data],
+                  properties:
+                    { data: { $ref: "#/components/schemas/Offering" } },
+                },
+            },
+        }
+    OfferingListResponse:
+      description: Offering page.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data, page],
+                  properties:
+                    {
+                      data:
+                        {
+                          type: array,
+                          items: { $ref: "#/components/schemas/Offering" },
+                        },
+                      page: { $ref: "#/components/schemas/PageInfo" },
+                    },
+                },
+            },
+        }
+    PurchaseResponse:
+      description: Operations purchase view.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data],
+                  properties:
+                    { data: { $ref: "#/components/schemas/Purchase" } },
+                },
+            },
+        }
+    PurchaseListResponse:
+      description: Purchase page.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data, page],
+                  properties:
+                    {
+                      data:
+                        {
+                          type: array,
+                          items: { $ref: "#/components/schemas/Purchase" },
+                        },
+                      page: { $ref: "#/components/schemas/PageInfo" },
+                    },
+                },
+            },
+        }
+    PaymentResponse:
+      description: Operations payment view.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data],
+                  properties:
+                    { data: { $ref: "#/components/schemas/Payment" } },
+                },
+            },
+        }
+    PaymentListResponse:
+      description: Payment page.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data, page],
+                  properties:
+                    {
+                      data:
+                        {
+                          type: array,
+                          items: { $ref: "#/components/schemas/Payment" },
+                        },
+                      page: { $ref: "#/components/schemas/PageInfo" },
+                    },
+                },
+            },
+        }
+    PaymentActionResponse:
+      description: Payment result plus resulting Purchase, quota, and activation summaries.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data],
+                  properties:
+                    { data: { $ref: "#/components/schemas/PaymentAction" } },
+                },
+            },
+        }
+    ParticipantResponse:
+      description: Participant.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data],
+                  properties:
+                    { data: { $ref: "#/components/schemas/Participant" } },
+                },
+            },
+        }
+    ParticipantListResponse:
+      description: Participant page.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data, page],
+                  properties:
+                    {
+                      data:
+                        {
+                          type: array,
+                          items: { $ref: "#/components/schemas/Participant" },
+                        },
+                      page: { $ref: "#/components/schemas/PageInfo" },
+                    },
+                },
+            },
+        }
+    DashboardResponse:
+      description: Non-authoritative dashboard summary.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data],
+                  properties:
+                    { data: { $ref: "#/components/schemas/DashboardSummary" } },
+                },
+            },
+        }
+    AuditListResponse:
+      description: Minimized audit page.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            {
+              schema:
+                {
+                  type: object,
+                  required: [data, page],
+                  properties:
+                    {
+                      data:
+                        {
+                          type: array,
+                          items: { $ref: "#/components/schemas/AuditEntry" },
+                        },
+                      page: { $ref: "#/components/schemas/PageInfo" },
+                    },
+                },
+            },
+        }
+    InvalidRequest:
+      description: Malformed request or correlation header.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    Unauthenticated:
+      description: Missing, invalid, expired, or revoked credential.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    Forbidden:
+      description: CSRF, Origin, or permission policy rejected the request.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    NotFound:
+      description: Resource not found.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    CommandConflict:
+      description: State, quota, or idempotency replay conflict.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    ValidationFailed:
+      description: Request validation failed.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    EvidenceTooLarge:
+      description: Evidence exceeds the 10 MiB public contract limit.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    UnsupportedMediaType:
+      description: Evidence is not a supported JPEG, PNG, or PDF.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    RateLimited:
+      description: Request rate is temporarily limited.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    InternalError:
+      description: Unexpected error; no SQL, stack trace, credentials, or personal data is disclosed.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    ServiceUnavailable:
+      description: A required dependency is temporarily unavailable.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+  schemas:
+    Session:
+      type: object
+      additionalProperties: false
+      required: [operator, permissions, expires_at, csrf_token]
+      properties:
+        operator:
+          type: object
+          additionalProperties: false
+          required: [id, display_name]
+          properties:
+            id: { type: string, format: uuid }
+            display_name: { type: string }
+        permissions:
+          type: array
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/Permission" }
+        expires_at: { type: string, format: date-time }
+        csrf_token:
+          {
+            type: string,
+            minLength: 43,
+            description: Keep only in Operations Web memory.,
+          }
+    Permission:
+      type: string
+      enum:
+        [
+          event.read,
+          event.manage,
+          offering.read,
+          offering.manage,
+          purchase.read,
+          payment.read,
+          payment.verify,
+          participant.read,
+          dashboard.read,
+          audit.read,
+          admin.manage,
+        ]
+    Event:
+      type: object
+      additionalProperties: false
+      required: [id, event_year, name, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        event_year: { type: integer, minimum: 1900, maximum: 9999 }
+        name: { type: string, minLength: 1 }
+        status:
+          {
+            type: string,
+            enum: [DRAFT, PUBLISHED, ACTIVE, SUSPENDED, CLOSED, ARCHIVED],
+          }
+        registration_opens_at: { type: string, format: date-time }
+        registration_closes_at: { type: string, format: date-time }
+        participant_quota: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    EventInput:
+      type: object
+      additionalProperties: false
+      required: [event_year, name]
+      properties:
+        event_year: { type: integer, minimum: 1900, maximum: 9999 }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        registration_opens_at: { type: string, format: date-time }
+        registration_closes_at: { type: string, format: date-time }
+        participant_quota: { type: integer, minimum: 0 }
+    EventPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 255 }
+        registration_opens_at: { type: string, format: date-time }
+        registration_closes_at: { type: string, format: date-time }
+        participant_quota: { type: integer, minimum: 0 }
+    Offering:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          event_id,
+          code,
+          name,
+          offering_kind,
+          price_minor,
+          currency_code,
+          participant_capacity,
+          status,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        code: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1 }
+        offering_kind: { type: string, minLength: 1 }
+        description: { type: string }
+        price_minor: { type: integer, minimum: 0 }
+        currency_code: { type: string, pattern: "^[A-Z]{3}$" }
+        participant_capacity: { type: integer, minimum: 1 }
+        participant_quota: { type: integer, minimum: 0 }
+        status:
+          { type: string, enum: [DRAFT, PUBLISHED, UNAVAILABLE, ARCHIVED] }
+        published_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    OfferingInput:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          code,
+          name,
+          offering_kind,
+          price_minor,
+          currency_code,
+          participant_capacity,
+        ]
+      properties:
+        code: { type: string, minLength: 1, maxLength: 64 }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        offering_kind: { type: string, minLength: 1, maxLength: 64 }
+        description: { type: string, maxLength: 10000 }
+        price_minor: { type: integer, minimum: 0 }
+        currency_code: { type: string, pattern: "^[A-Z]{3}$" }
+        participant_capacity: { type: integer, minimum: 1 }
+        participant_quota: { type: integer, minimum: 0 }
+    OfferingPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 255 }
+        description: { type: string, maxLength: 10000 }
+        price_minor: { type: integer, minimum: 0 }
+        participant_quota: { type: integer, minimum: 0 }
+    PartySummary:
+      type: object
+      additionalProperties: false
+      required: [id, display_name]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+    Purchase:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          event_id,
+          purchase_ref,
+          channel,
+          purchaser,
+          offering_id,
+          participant_count,
+          total_amount_minor,
+          currency_code,
+          status,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        purchase_ref: { type: string }
+        channel: { type: string, enum: [COMMON, SAVING, GIVEAWAY] }
+        purchaser: { $ref: "#/components/schemas/PartySummary" }
+        payer: { $ref: "#/components/schemas/PartySummary" }
+        offering_id: { type: string, format: uuid }
+        offering_name_snapshot: { type: string }
+        participant_count: { type: integer, minimum: 1 }
+        total_amount_minor: { type: integer, minimum: 0 }
+        currency_code: { type: string, pattern: "^[A-Z]{3}$" }
+        status:
+          {
+            type: string,
+            enum:
+              [
+                DRAFT,
+                PENDING_PAYMENT,
+                PAID,
+                ELIGIBLE,
+                ALLOCATED,
+                COMPLETED,
+                CANCELLED,
+              ],
+          }
+        eligible_at: { type: string, format: date-time }
+        cancelled_at: { type: string, format: date-time }
+        cancellation_reason: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Payment:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          event_id,
+          payment_ref,
+          payer,
+          amount_minor,
+          currency_code,
+          method,
+          status,
+          submitted_at,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        payment_ref: { type: string }
+        purchase_id: { type: string, format: uuid }
+        payer: { $ref: "#/components/schemas/PartySummary" }
+        amount_minor: { type: integer, minimum: 1 }
+        currency_code: { type: string, pattern: "^[A-Z]{3}$" }
+        method: { type: string }
+        status:
+          { type: string, enum: [SUBMITTED, VERIFIED, REJECTED, REFUNDED] }
+        evidence:
+          type: object
+          additionalProperties: false
+          properties:
+            filename: { type: string }
+            media_type:
+              { type: string, enum: [image/jpeg, image/png, application/pdf] }
+            size_bytes: { type: integer, minimum: 1, maximum: 10485760 }
+        submitted_at: { type: string, format: date-time }
+        verified_at: { type: string, format: date-time }
+        rejection_reason: { type: string }
+    PaymentAction:
+      type: object
+      additionalProperties: false
+      required: [payment, purchase, quota_reservation, participant_activation]
+      properties:
+        payment: { $ref: "#/components/schemas/Payment" }
+        purchase: { $ref: "#/components/schemas/Purchase" }
+        quota_reservation:
+          type: object
+          additionalProperties: false
+          required: [status, participant_units]
+          properties:
+            status:
+              { type: string, enum: [RESERVED, CONSUMED, RELEASED, EXPIRED] }
+            participant_units: { type: integer, minimum: 1 }
+        participant_activation:
+          type: object
+          additionalProperties: false
+          required: [activated_count]
+          properties:
+            activated_count: { type: integer, minimum: 0 }
+            status: { type: string, enum: [PENDING, ACTIVE] }
+    Participant:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          event_id,
+          purchase_id,
+          sequence_no,
+          display_name,
+          status,
+          created_at,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        purchase_id: { type: string, format: uuid }
+        sequence_no: { type: integer, minimum: 1 }
+        display_name: { type: string }
+        participant_ref: { type: string }
+        status: { type: string, enum: [PENDING, ACTIVE, REPLACED, CANCELLED] }
+        created_at: { type: string, format: date-time }
+    DashboardSummary:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          generated_at,
+          purchase_counts,
+          payment_counts,
+          active_participant_count,
+        ]
+      properties:
+        event_id: { type: string, format: uuid }
+        generated_at: { type: string, format: date-time }
+        purchase_counts:
+          type: object
+          additionalProperties: false
+          properties:
+            pending_payment: { type: integer, minimum: 0 }
+            paid: { type: integer, minimum: 0 }
+            eligible: { type: integer, minimum: 0 }
+            cancelled: { type: integer, minimum: 0 }
+        payment_counts:
+          type: object
+          additionalProperties: false
+          properties:
+            submitted: { type: integer, minimum: 0 }
+            verified: { type: integer, minimum: 0 }
+            rejected: { type: integer, minimum: 0 }
+        active_participant_count: { type: integer, minimum: 0 }
+    AuditEntry:
+      type: object
+      additionalProperties: false
+      required: [id, actor_reference, action, target_type, source, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        actor_reference: { type: string }
+        action: { type: string }
+        target_type: { type: string }
+        target_id: { type: string, format: uuid }
+        request_id: { type: string, maxLength: 64 }
+        permission: { $ref: "#/components/schemas/Permission" }
+        reason: { type: string }
+        source: { type: string }
+        created_at: { type: string, format: date-time }
+    PageInfo:
+      type: object
+      additionalProperties: false
+      required: [limit]
+      properties:
+        next_cursor: { type: string, maxLength: 512 }
+        limit: { type: integer, minimum: 1, maximum: 100 }
+    ReasonRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 1000 }
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, request_id, details]
+          properties:
+            code:
+              type: string
+              enum:
+                [
+                  invalid_request,
+                  validation_failed,
+                  unauthenticated,
+                  forbidden,
+                  not_found,
+                  state_conflict,
+                  quota_unavailable,
+                  idempotency_conflict,
+                  evidence_too_large,
+                  unsupported_media_type,
+                  rate_limited,
+                  internal_error,
+                  service_unavailable,
+                ]
+            message: { type: string }
+            request_id: { type: string, maxLength: 64 }
+            details: { type: object, additionalProperties: true }

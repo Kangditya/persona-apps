@@ -1290,13 +1290,13 @@ Phase 1 common purchasing uses these rules:
 
 ## ADR-043: Reuse standard HTTP and add OIDC-backed operations sessions
 
-**Status:** Accepted
+**Status:** Accepted; its router choice is superseded by ADR-046
 
 ### Decision
 
-- Keep Go's method-aware `net/http.ServeMux`; register public and operations
-  routes explicitly from the application composition root. Do not add a
-  third-party router.
+The HTTP-router choice in this ADR is superseded by ADR-046. The authentication,
+session, CSRF, Purchase-token, and migration decisions below remain accepted.
+
 - Keep ADR-040's `golang-migrate/migrate/v4` command, numbered SQL pairs, and
   separate seed lifecycle. API startup never runs migrations, and migrations
   `0001` through `0004` remain historical files.
@@ -1374,3 +1374,75 @@ admin.manage and an auditable reason.
 W1-05 must expose only endpoints whose authorization maps to this vocabulary.
 W1-06 implements the documented enforcement and command behavior. This ADR
 does not add tables, Go dependencies, routes, or a generic idempotency store.
+
+---
+
+## ADR-045: Encrypt sensitive idempotent replay responses at rest
+
+**Status:** Accepted
+
+### Decision
+
+Some successful retry-sensitive commands return a raw credential that is
+intentionally unavailable from later read endpoints. Common-purchase checkout
+returns the opaque Purchase Bearer token once, while ADR-041 requires an exact
+retry to replay the committed response. Storing that response body as plaintext
+would persist the raw token and violate ADR-043.
+
+Store every replayable response body that contains raw credential material as
+an AES-256-GCM encrypted envelope in `idempotency_records.response_body`. The
+envelope records a key identifier, nonce, and ciphertext; it never stores a
+plaintext response body or raw credential. Additional authenticated data binds
+the command namespace, idempotency key, request hash, and response status.
+
+`IDEMPOTENCY_RESPONSE_KEYS` is an ordered, secret key ring of
+`key-id:base64-32-byte-key` values. The first key encrypts new records; all
+configured keys may decrypt retained records. Key removal is allowed only
+after every record encrypted with that key has expired. A same-request replay
+whose retained key is unavailable returns `idempotency_conflict` and does not
+execute the command again.
+
+### Consequences
+
+- The existing JSONB column is sufficient; no migration is needed.
+- W1-06 implements encryption, decryption, key validation, and tests for
+  tampering, rotation, and unavailable retained keys.
+- Raw Purchase tokens remain absent from database plaintext, logs, audit data,
+  errors, and read endpoints.
+- Non-sensitive replay bodies may use the same envelope format so one
+  idempotency decoder handles all successful responses.
+
+---
+
+## ADR-046: Use Gin as the canonical backend HTTP router
+
+**Status:** Accepted
+
+### Decision
+
+Use `github.com/gin-gonic/gin` as the canonical HTTP framework and router for
+the Go API. Gin is confined to the HTTP adapter and bootstrap boundary:
+
+- `gin.Engine` owns route registration, method/path matching, route groups,
+  request binding, middleware composition, and HTTP response rendering;
+- public and Operations surfaces register through separate canonical route
+  groups;
+- module HTTP adapters own their concrete endpoint declarations;
+- application, domain, repository, and persistence packages remain framework
+  neutral and receive `context.Context`, not `*gin.Context`;
+- `net/http` remains valid for `http.Server`, transport types, status
+  constants, headers, cookies, `httptest`, request contexts, and graceful
+  shutdown.
+
+The engine uses explicit middleware with `gin.New()`; it does not adopt
+`gin.Default()` or duplicate repository-owned request logging.
+
+### Consequences
+
+- ADR-043's first router bullet is superseded; its authentication and
+  persistence decisions remain unchanged.
+- The API keeps `/api/public/v1` and `/api/operations/v1` route boundaries.
+- Gin is a new API-module dependency; no database migration or OpenAPI
+  contract change is required.
+- Future endpoints must register through the appropriate route group and
+  preserve the public/Operations contract boundary.

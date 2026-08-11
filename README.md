@@ -19,7 +19,7 @@ No qurban business functionality is implemented yet. The following remain deferr
 - Party, Participant, and Sohibul Qurban activation;
 - Livestock and Allocation;
 - Slaughter and Distribution operations;
-- authentication and authorization;
+- business authorization and authenticated product workflows;
 - reporting projections and operational dashboards;
 - payment gateway integration;
 - production deployment.
@@ -230,8 +230,10 @@ diagnostic adapter without credentials or a running API. It returns only
 The Storefront and Operations endpoint modules remain application-owned.
 They share only `@persona-apps/api-client`, which owns request serialization,
 timeouts, cancellation, response parsing, and normalized errors. It exposes a
-`getHeaders` extension point for a future session provider, but no credentials
-are stored or logged because authentication is not yet contracted.
+`getHeaders` extension point for a future session provider. It does not yet
+wire an Operations browser session; endpoint-specific session handling must
+follow the authentication contract. No credentials are stored or logged by the
+generic client.
 
 Future public endpoints belong in `apps/storefront-web/src/api`; operations
 endpoints belong in `apps/operations-web/src/api`, using their respective
@@ -276,4 +278,5 @@ Canonical product and architecture documents are under `docs/`:
 - `docs/PRD.md`;
 - `docs/PRODUCT_MAP.md`;
 - `docs/ARCHITECTURE.md`;
-- `docs/DECISIONS.md`.
+- `docs/DECISIONS.md`;
+- `docs/CONVENTIONS.md`.
