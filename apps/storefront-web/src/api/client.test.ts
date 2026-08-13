@@ -21,6 +21,20 @@ describe("storefront API boundary", () => {
     expect(headers?.get("Authorization")).toBeNull();
   });
 
+  it("preserves canonical public API paths with a same-origin base URL", async () => {
+    let url = "";
+    const client = createApiClient({
+      baseUrl: "",
+      fetch: async (input) => {
+        url = String(input);
+        return Response.json({ data: null });
+      },
+    });
+
+    await client.request("/api/public/v1/events/active");
+    expect(url).toBe("/api/public/v1/events/active");
+  });
+
   it("keeps the development provider deterministic and non-networked", async () => {
     const api = createStorefrontApi({
       baseUrl: "https://api.example.test",
@@ -96,6 +110,61 @@ describe("storefront API boundary", () => {
     await expect(timedOut.request("/health")).rejects.toMatchObject({
       kind: "unavailable",
       message: "Request timed out",
+    } satisfies Partial<ApiError>);
+  });
+
+  it("preserves safe structured public API error metadata", async () => {
+    const client = createApiClient({
+      baseUrl: "https://api.example.test",
+      fetch: async () =>
+        Response.json(
+          {
+            error: {
+              code: "rate_limited",
+              message: "Try again shortly",
+              request_id: "request_1",
+              details: { retry_scope: "public" },
+            },
+          },
+          {
+            status: 429,
+            headers: { "Retry-After": "2", "X-Request-ID": "request_2" },
+          },
+        ),
+    });
+
+    await expect(
+      client.request("/api/public/v1/events/active"),
+    ).rejects.toMatchObject({
+      kind: "rate_limited",
+      code: "rate_limited",
+      requestId: "request_2",
+      details: { retry_scope: "public" },
+      retryAfterSeconds: 2,
+    } satisfies Partial<ApiError>);
+
+    const malformedRetryAfter = createApiClient({
+      baseUrl: "https://api.example.test",
+      fetch: async () =>
+        Response.json(
+          {
+            error: {
+              code: "not_found",
+              message: "Not found",
+              request_id: "request_3",
+              details: {},
+            },
+          },
+          { status: 404, headers: { "Retry-After": "tomorrow" } },
+        ),
+    });
+    await expect(
+      malformedRetryAfter.request("/api/public/v1/offerings/x"),
+    ).rejects.toMatchObject({
+      kind: "not_found",
+      code: "not_found",
+      requestId: "request_3",
+      retryAfterSeconds: undefined,
     } satisfies Partial<ApiError>);
   });
 });

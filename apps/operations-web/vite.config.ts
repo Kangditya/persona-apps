@@ -3,6 +3,14 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+function createApiProxy(target: string) {
+  return {
+    "/api": { target, changeOrigin: true },
+    "/health": { target, changeOrigin: true },
+    "/ready": { target, changeOrigin: true },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -49,13 +57,9 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     server: {
-      proxy: {
-        "/api": {
-          target: env.VITE_API_PROXY_TARGET || "http://127.0.0.1:8080",
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, ""),
-        },
-      },
+      proxy: createApiProxy(
+        env.VITE_API_PROXY_TARGET || "http://127.0.0.1:8080",
+      ),
     },
   };
 });

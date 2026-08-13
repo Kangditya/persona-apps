@@ -4,6 +4,7 @@ import (
     "encoding/base64"
     "errors"
     "fmt"
+    "net/netip"
     "net/url"
     "os"
     "strconv"
@@ -31,7 +32,14 @@ type Config struct {
 
 type APIConfig struct {
     Config
-    Auth *AuthConfig
+    Auth   *AuthConfig
+    Public PublicConfig
+}
+
+type PublicConfig struct {
+    RateLimitPerMinute int
+    RateLimitBurst     int
+    TrustedProxyCIDRs  []string
 }
 
 type AuthConfig struct {
@@ -89,7 +97,61 @@ func LoadAPI() (APIConfig, error) {
     if !configured && (base.Environment == Staging || base.Environment == Production) {
         return APIConfig{}, errors.New("OIDC and response-encryption configuration is required outside development and test")
     }
-    return APIConfig{Config: base, Auth: auth}, nil
+    public, err := loadPublic()
+    if err != nil {
+        return APIConfig{}, err
+    }
+    return APIConfig{Config: base, Auth: auth, Public: public}, nil
+}
+
+func loadPublic() (PublicConfig, error) {
+    perMinute, err := positiveIntFromEnvironment("PUBLIC_RATE_LIMIT_PER_MINUTE", 60)
+    if err != nil {
+        return PublicConfig{}, err
+    }
+    burst, err := positiveIntFromEnvironment("PUBLIC_RATE_LIMIT_BURST", 20)
+    if err != nil {
+        return PublicConfig{}, err
+    }
+    trustedProxyCIDRs, err := parseTrustedProxyCIDRs(os.Getenv("TRUSTED_PROXY_CIDRS"))
+    if err != nil {
+        return PublicConfig{}, err
+    }
+    return PublicConfig{RateLimitPerMinute: perMinute, RateLimitBurst: burst, TrustedProxyCIDRs: trustedProxyCIDRs}, nil
+}
+
+func positiveIntFromEnvironment(name string, fallback int) (int, error) {
+    value := os.Getenv(name)
+    if value == "" {
+        return fallback, nil
+    }
+    parsed, err := strconv.Atoi(value)
+    if err != nil || parsed < 1 {
+        return 0, fmt.Errorf("%s must be a positive integer", name)
+    }
+    return parsed, nil
+}
+
+func parseTrustedProxyCIDRs(value string) ([]string, error) {
+    if strings.TrimSpace(value) == "" {
+        return nil, nil
+    }
+    seen := map[string]struct{}{}
+    cidrs := make([]string, 0)
+    for _, raw := range strings.Split(value, ",") {
+        raw = strings.TrimSpace(raw)
+        prefix, err := netip.ParsePrefix(raw)
+        if raw == "" || err != nil || prefix.Bits() == 0 || prefix != prefix.Masked() {
+            return nil, errors.New("TRUSTED_PROXY_CIDRS must contain canonical non-global CIDRs")
+        }
+        normalized := prefix.String()
+        if _, found := seen[normalized]; found {
+            continue
+        }
+        seen[normalized] = struct{}{}
+        cidrs = append(cidrs, normalized)
+    }
+    return cidrs, nil
 }
 
 func loadAuth(environment Environment) (*AuthConfig, bool, error) {

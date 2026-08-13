@@ -8,21 +8,21 @@ No migration was applied to staging or production.
 
 ## Required report
 
-| Item                                 | Result                                                                                                                                                                                                                                     |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Database engine / dialect discovered | PostgreSQL; Compose uses `postgres:18-alpine`, and Go uses `pgx/v5` with `database/sql`.                                                                                                                                                   |
-| Migration framework discovered       | `golang-migrate/migrate/v4`, selected because it consumes paired SQL files and supports PostgreSQL locking/version state.                                                                                                                  |
-| Existing schema reused               | None. No business tables, SQL schema, ORM, query models, seeds, or migration history exist.                                                                                                                                                |
-| New tables proposed                  | 33 tables across foundation, commerce/funding, operations, platform integrity, and Phase 1 safety. See `ERD.md`.                                                                                                                           |
-| Existing tables changed              | qurban_events, offerings, purchases, payment_records, and audit_log receive additive 0005 changes.                                                                                                                                         |
-| Deferred tables / relationships      | Contacts, roles/permissions administration, offering composition/cart, saving policy, giveaway selection, personal slaughter, distribution entitlement/beneficiaries, notifications, projections, and tenancy.                             |
-| Migration files created              | Ten files: five `.up.sql` and five `.down.sql` files under `apps/api/migrations/`; 0005 adds Phase 1 safety storage.                                                                                                                       |
-| Backfills required                   | None; no existing schema/data.                                                                                                                                                                                                             |
-| Indexes added                        | Event/status/channel queues, public references, role/source lookups, history chronology, financial reconciliation, quota/session queues, livestock/allocation/queue operations, audit targets, unpublished outbox, and idempotency expiry. |
-| Destructive operations               | Only rollback scripts use `DROP TABLE`; up migrations are additive. No `CASCADE` is used.                                                                                                                                                  |
-| Rollback coverage                    | Complete per migration unit; apply down scripts in reverse order.                                                                                                                                                                          |
-| API contract impact                  | None. Both OpenAPI contracts remain placeholders.                                                                                                                                                                                          |
-| Dependency impact                    | Added `golang-migrate/migrate/v4` and test-only `go-sqlmock`; frontend dependencies unchanged.                                                                                                                                             |
+| Item                                 | Result                                                                                                                                                                                                                                                                   |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Database engine / dialect discovered | PostgreSQL; Compose uses `postgres:18-alpine`, and Go uses `pgx/v5` with `database/sql`.                                                                                                                                                                                 |
+| Migration framework discovered       | `golang-migrate/migrate/v4`, selected because it consumes paired SQL files and supports PostgreSQL locking/version state.                                                                                                                                                |
+| Existing schema reused               | None. No business tables, SQL schema, ORM, query models, seeds, or migration history exist.                                                                                                                                                                              |
+| New tables proposed                  | 33 tables across foundation, commerce/funding, operations, platform integrity, and Phase 1 safety. See `ERD.md`.                                                                                                                                                         |
+| Existing tables changed              | qurban_events, offerings, purchases, payment_records, and audit_log receive additive 0005 changes; 0006 adds Event/Offering versions, exact-integer bounds, and a used-reservation aggregation index.                                                                    |
+| Deferred tables / relationships      | Contacts, roles/permissions administration, offering composition/cart, saving policy, giveaway selection, personal slaughter, distribution entitlement/beneficiaries, notifications, projections, and tenancy.                                                           |
+| Migration files created              | Twelve files: six `.up.sql` and six `.down.sql` files under `apps/api/migrations/`; 0006 adds Event/Offering concurrency and integer-safety hardening.                                                                                                                   |
+| Backfills required                   | None; no existing schema/data.                                                                                                                                                                                                                                           |
+| Indexes added                        | Event/status/channel queues, public references, role/source lookups, history chronology, financial reconciliation, quota/session queues, used-reservation aggregation, livestock/allocation/queue operations, audit targets, unpublished outbox, and idempotency expiry. |
+| Destructive operations               | Only rollback scripts use `DROP TABLE`; up migrations are additive. No `CASCADE` is used.                                                                                                                                                                                |
+| Rollback coverage                    | Complete per migration unit; apply down scripts in reverse order.                                                                                                                                                                                                        |
+| API contract impact                  | None. Both OpenAPI contracts remain placeholders.                                                                                                                                                                                                                        |
+| Dependency impact                    | Added `golang-migrate/migrate/v4` and test-only `go-sqlmock`; frontend dependencies unchanged.                                                                                                                                                                           |
 
 ## Implemented
 
@@ -43,6 +43,9 @@ No migration was applied to staging or production.
 * `0004_schema_seeds` creates independent seed execution history.
 * `0005_mvp_commerce_safety` adds the accepted Event, Offering, intended
 * participant, quota, evidence, Purchase-token, session, and audit safeguards.
+* `0006_add_event_offering_versions_and_bounds` adds Event/Offering optimistic
+  versions, exact JSON-safe integer bounds, and the partial aggregation index
+  for reservations in `RESERVED` or `CONSUMED` state.
 
 - `apps/api/cmd/db` provides migration validation/status/version/up/bounded
   down/create, seed list/status/run, and setup commands.
@@ -57,7 +60,7 @@ No migration was applied to staging or production.
   migration validation, CLI parsing, seed ordering, commit/rollback, history,
   and environment guards).
 
-* The migration source validates five paired files.
+* The migration source validates six paired files.
 
 - The first `make validate` format check failed only because the new Markdown
   files were unformatted; the files were then formatted and the later full
@@ -97,6 +100,22 @@ No migration was applied to staging or production.
 - Inspected live constraints, foreign keys, partial indexes, evidence checks,
   reservation guards, token hashes, and session hashes against the ERD.
 - No migration was applied to staging or production.
+
+### W2-03 follow-up verification (2026-08-13)
+
+- On a separate disposable local PostgreSQL 18 database, migration source
+  validation found six pairs and the database reported version `6`, not dirty.
+- Migration `0006` was rolled back one bounded step to version `5` and
+  reapplied to version `6`, not dirty. No staging or production target was
+  touched.
+- Focused Event/Offering repository integration tests and the full API test
+  suite passed with `TEST_DATABASE_URL`; `go vet ./...` and `go build ./...`
+  also passed.
+- Representative `EXPLAIN` output retained the existing Event-year and
+  Offering event/code unique indexes for deterministic lists. Before 0006,
+  used-reservation aggregation filtered `CONSUMED` rows after an existing
+  active-reservation index; after 0006 it used
+  `idx_quota_reservations_used_event_offering`. That is the only new index.
 
 ## Assumed
 

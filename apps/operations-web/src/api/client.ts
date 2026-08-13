@@ -30,6 +30,6 @@ const provider: ApiProvider =
   import.meta.env.VITE_API_PROVIDER === "development" ? "development" : "api";
 
 export const operationsApi = createOperationsApi({
-  baseUrl: import.meta.env.VITE_API_BASE_URL || "/api",
+  baseUrl: import.meta.env.VITE_API_BASE_URL || "",
   provider,
 });

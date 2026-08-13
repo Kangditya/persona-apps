@@ -8,12 +8,13 @@ This repository contains React application shells, shared workspace tooling, a G
 
 The documented frontend direction is React Router with Remix-style routing
 conventions and TanStack Query for remote API/server state. Both Vite apps now
-include a typed transport boundary and an API-availability diagnostic only; no
-qurban business endpoint or workflow is implemented.
+include a typed transport boundary and an API-availability diagnostic. The Go
+API serves the guest Event/Offering catalogue, while its Storefront screens and
+all product mutations remain deferred.
 
-No qurban business functionality is implemented yet. The following remain deferred:
+Event/Offering configuration, PostgreSQL persistence, and guest catalogue
+discovery are implemented. The following remain deferred:
 
-- Qurban Event and Offering Catalogue;
 - Common, Saving, and Giveaway Purchasing;
 - Payment Verification and Funding;
 - Party, Participant, and Sohibul Qurban activation;
@@ -39,7 +40,7 @@ Qurban Event
 
 - `apps/storefront-web`: public event, offering, purchasing, payment interaction, and purchase-tracking shell;
 - `apps/operations-web`: internal event, purchasing, payment verification, participant, livestock, allocation, and distribution operations shell;
-- `apps/api`: Go modular-monolith API shell.
+- `apps/api`: Go modular-monolith API with public Event/Offering discovery.
 
 ## Requirements
 
@@ -214,15 +215,15 @@ configure a distinct deployment base path before hosting them on one origin.
 Both applications read these Vite variables at build time:
 
 ```text
-VITE_API_BASE_URL=/api
+VITE_API_BASE_URL=
 VITE_API_PROXY_TARGET=http://127.0.0.1:8080
 VITE_API_PROVIDER=api
 ```
 
-For local development, Vite proxies `/api` to `VITE_API_PROXY_TARGET`; the
-production value may instead be a same-origin API path or an API origin with
-an appropriate CORS policy. `api` calls the existing Go API `GET /health`
-endpoint. Set
+For local development, Vite proxies canonical `/api` paths unchanged and also
+proxies `/health` and `/ready` to `VITE_API_PROXY_TARGET`; the production value
+may instead be an absolute API origin with an appropriate CORS policy. `api`
+calls the existing Go API `GET /health` endpoint. Set
 `VITE_API_PROVIDER=development` to use a deterministic, non-authoritative
 diagnostic adapter without credentials or a running API. It returns only
 `{ "status": "development" }`; it does not represent qurban product data.

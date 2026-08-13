@@ -18,11 +18,14 @@ It currently contains:
 - one Go API shell;
 - shared workspace tooling;
 - PostgreSQL local infrastructure;
-- placeholder API contracts;
+- Phase 1 API contract baselines;
 - documentation;
 - CI and repository validation commands.
 
-No qurban business capability is implemented yet.
+The Event and Offering domain cores, PostgreSQL repositories, additive
+version/bounds migration, and public catalogue routes are implemented.
+Operations catalogue commands/routes and Storefront catalogue screens remain
+pending.
 
 The product direction has changed from a generic single-brand commerce and POS platform into a:
 
@@ -104,8 +107,9 @@ Current frontend stack:
 - Vitest.
 
 The applications now include a TanStack Query provider, typed API transport
-boundaries, and a non-authoritative API-availability diagnostic. No qurban
-business queries or mutations are implemented.
+boundaries, and a non-authoritative API-availability diagnostic. Storefront
+catalogue screens and all business mutations remain unimplemented; the W2-04
+public API surface is available for the eventual catalogue UI.
 
 Both applications also consume `@persona-apps/ui`, which owns shared semantic
 tokens and accessible atoms/molecules, and have independent production PWA
@@ -157,8 +161,20 @@ Current backend capabilities:
 - Air-compatible local live-reload configuration;
 - PostgreSQL connectivity;
 - Docker image build.
+- guest `GET /api/public/v1/events/active`, Event Offering-list, and Offering
+  detail routes with active/published filtering;
+- request-correlated public JSON errors, recovery, no-store catalogue headers,
+  bounded per-process guest rate limiting, and disabled-by-default proxy trust.
 
-No qurban domain modules exist yet.
+Framework-neutral Event and Offering modules enforce validated annual and
+commercial configuration, version-aware lifecycle transitions, immutable
+terminal states, and the audit/outbox/retry metadata required by the later
+transactional adapter. Their concrete PostgreSQL repositories use bounded
+keyset reads, conditional version updates, a caller-provided transaction, and
+one-query advisory availability aggregation. Offering availability uses Event
+and Offering quota snapshots with only reserved/consumed units counted; it
+does not reserve quota. Public catalogue reads expose only minimized active and
+published DTOs with advisory availability.
 
 Implemented platform foundations:
 
@@ -172,10 +188,11 @@ Implemented platform foundations:
 - request-ID middleware, structured error envelopes, transaction helper,
   caller-transaction audit writer, and encrypted idempotency replay executor.
 
-ADR-043 through ADR-045 define these contracts. The API has no business
-handlers yet: Storefront Purchase access and all domain command use of the
-platform remain unimplemented. Auth routes exist only when the complete
-fail-closed configuration is present; no secret value is committed.
+ADR-043 through ADR-045 define these contracts. The API currently has only
+guest Event/Offering read handlers; Storefront Purchase access and transactional
+platform composition for domain commands remain unimplemented. Auth routes
+exist only when the complete fail-closed configuration is present; no secret
+value is committed.
 
 ### Infrastructure
 
@@ -204,10 +221,11 @@ Implemented as contracts, placeholders, or shells:
 - shared UI package with tokens and accessible primitives;
 - application-owned PWA manifests and service-worker configuration.
 
-The separate public and operations OpenAPI contracts now define Phase 1
-request, response, permission, request-ID, CSRF, idempotency, and error
-behavior. They remain contract-only: no business route, client, or frontend
-query implementation exists yet.
+The separate public and operations OpenAPI contracts define Phase 1 request,
+response, permission, request-ID, CSRF, idempotency, and error behavior. The
+public Event/Offering discovery contract has matching API routes; Purchase and
+Operations contracts remain contract-only, and no Storefront business query or
+screen is implemented yet.
 
 ### Database lifecycle tooling
 
@@ -222,13 +240,13 @@ Implemented:
 - repository Make targets for the complete normal CLI surface.
 
 The proposed qurban business schema is documented in `docs/database/ERD.md`
-and scripted in the five numbered migration pairs under
+and scripted in the six numbered migration pairs under
 `apps/api/migrations`. The schema includes foundation, commerce/funding,
 operations, audit, outbox, command idempotency, seed metadata, and Phase 1
 commerce-safety constraints for Event suspension, Offering quota, intended
 participants, quota reservations, evidence metadata, Purchase tokens, and
-Operations sessions. No business repository or API command uses these tables
-yet.
+Operations sessions. Event/Offering repositories and public read routes use
+the relevant tables; no business command uses them yet.
 
 The reference seed group is intentionally empty. The development group only
 contains `development.sample-event`. No migration or seed has been run against
@@ -508,7 +526,7 @@ Current replacements:
 
 ## Current Verification State
 
-Last recorded full verification: **2026-08-03**
+Last recorded implementation verification: **2026-08-13**
 
 The product/architecture and frontend-artifact alignment has been verified
 with:
@@ -517,15 +535,22 @@ with:
 make validate
 ```
 
-This passed formatting checks, frontend linting, TypeScript type checking,
-frontend tests, frontend builds, Go formatting, Go vet, Go tests, Go build,
-and Docker Compose configuration validation.
+The Event/Offering implementation passed focused Go formatting, Go vet, full
+Go tests with disposable PostgreSQL, Go build, Storefront/Operations frontend
+tests, type checks, linting, builds, high-severity JavaScript audit, reachable
+Go vulnerability scan, and Compose configuration validation. The scan has zero
+reachable-symbol and imported-package findings; only the upstream-unfixed,
+uncalled `golang.org/x/crypto/openpgp` module advisory remains. The W2-04
+archive records that `make validate` is otherwise blocked only by six untouched
+pre-existing Go formatter-baseline files.
 
 Frontend type checking, focused tests, linting, builds, PWA manifest output,
-and service-worker precache policy are verified. This does not verify qurban
-business behavior because none is implemented.
+and service-worker precache policy are verified. The public read behavior is
+verified; Purchase and Operations command behavior is not implemented.
 
-The API foundation remains limited to `/health`, PostgreSQL-backed `/ready`, and graceful shutdown. No qurban business capability has been implemented.
+The API provides `/health`, PostgreSQL-backed `/ready`, graceful shutdown, and
+the bounded guest Event/Offering catalogue. It has no Purchase or Operations
+business command capability yet.
 
 ---
 
@@ -596,30 +621,27 @@ These rules must not be invented during implementation.
 
 ## Current Risks
 
-1. Real public and operations API contracts remain endpoint-free; the frontend
-   diagnostic is not a product vertical slice.
-2. Query-key shapes, stale-time policy, mutation invalidation, and route-data
-   requirements cannot be finalized until meaningful public and operations
-   endpoints exist.
-3. The Go backend has platform HTTP route composition, but no business module
-   registration pattern yet.
-4. Migration tooling and SQL artifacts exist, but the migrations have not been
-   executed through the runner against disposable PostgreSQL in this
-   environment.
-5. Gin is the accepted HTTP router; business endpoint modules remain deferred.
-6. OIDC-backed Operations session foundations exist; operator provisioning and
+1. Public Event/Offering read routes exist, but Operations catalogue commands,
+   Purchase flows, and all privileged business handlers remain endpoint-free.
+2. Storefront query keys, stale-time policy, UI states, and route data remain
+   W2-07 work; the current frontend diagnostic is not a catalogue screen.
+3. The public limiter is intentionally per process. Ingress/CDN enforcement is
+   still required for a uniform multi-replica rate limit and key-filling abuse.
+4. Migration/repository verification used only an explicitly disposable local
+   PostgreSQL database; staging and production compatibility remain unproven.
+5. OIDC-backed Operations session foundations exist; operator provisioning and
    business-route authorization remain deferred.
-7. The proposed database domain model is documented and scripted, but no
-   business vertical slice has validated its command behavior or query shape.
+6. The domain model has public-query proof but no Purchase or Operations
+   command vertical slice yet.
 
 ---
 
 ## Recommended Next Task
 
-Define and approve the first business vertical slice on the established Gin
-route-group boundary. That slice must identify its route modules, the
-applicable separate OpenAPI contract, and the smallest required
-`@tanstack/react-query` integration.
+Implement W2-05 Operations Event/Offering commands on the established Gin
+route-group boundary. It must compose authorization, idempotency where the
+contract promises it, audit/outbox records, and version-aware repository
+updates in one transaction.
 
 The recommended first slice remains:
 

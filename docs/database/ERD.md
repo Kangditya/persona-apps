@@ -572,9 +572,9 @@ by status and history.
 
 - Purpose: annual operational boundary for pricing, capacity, purchasing, and execution.
 - Primary key: `id uuid`; business identifier: unique `event_year`.
-- Important columns: name, lifecycle status, registration window, optional participant quota, timestamps.
-- Foreign keys/constraints: registration close must follow open when both exist; status check.
-- Indexes: unique year and status lookup.
+- Important columns: name, lifecycle status, registration window, optional participant quota, optimistic `version`, timestamps.
+- Foreign keys/constraints: registration close must follow open when both exist; status check; version and API-visible quota values are bounded to exact JSON-safe integers.
+- Indexes: unique year, status lookup, and one-active-Event partial uniqueness.
 
 #### `event_locations` — NEW
 
@@ -592,6 +592,9 @@ by status and history.
 - offerings adds an optional non-negative participant_quota. Null leaves only
   the Event participant quota in force; participant_capacity remains the
   per-Purchase maximum.
+- qurban_events and offerings add a positive `bigint` optimistic `version`.
+  Event/Offering quotas and Offering minor-unit prices are bounded at
+  9,007,199,254,740,991 so API JSON numbers remain exact.
 - purchases adds a unique nullable 32-byte access_token_hash. Common Purchases
   require it, and the raw bearer token is never stored.
 - purchase_participants captures intended participant display names, an optional
@@ -601,8 +604,9 @@ by status and history.
 - quota_reservations retains numbered attempts for one Purchase and its selected
   Offering. Its composite foreign key prevents a cross-Event or mismatched
   Offering reference; a partial unique index permits one RESERVED attempt.
-  SQL indexes active Event and Offering reservations and the expiry queue, while
-  commands still lock authoritative quota totals transactionally.
+  SQL indexes active Event and Offering reservations, used reservation
+  aggregation (`RESERVED` or `CONSUMED`), and the expiry queue, while commands
+  still lock authoritative quota totals transactionally.
 - payment_records adds all-or-none evidence filename, media type, byte size,
   and SHA-256 metadata. Only image/jpeg, image/png, and application/pdf up to
   10 MiB are accepted.
@@ -611,8 +615,8 @@ by status and history.
 
 - Purpose: event-scoped public commercial offering, separate from physical livestock.
 - Primary key: `id uuid`; business identifier: unique `(event_id, code)`.
-- Important columns: name, unconstrained `offering_kind`, description, price minor units, currency, participant capacity, publication status, `published_at`.
-- Foreign keys/constraints: event FK; non-negative price; positive capacity.
+- Important columns: name, unconstrained `offering_kind`, description, price minor units, currency, participant capacity, optional participant quota, publication status, `published_at`, optimistic `version`.
+- Foreign keys/constraints: event FK; non-negative JSON-safe price; positive capacity; JSON-safe optional quota and positive version.
 - Indexes: `(event_id, status)` and unique event code.
 - Open behavior: exact offering kinds, package/share semantics, and availability rules are intentionally not encoded.
 

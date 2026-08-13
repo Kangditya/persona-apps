@@ -3,10 +3,13 @@ package cli
 import (
     "bytes"
     "context"
+    "fmt"
     "os"
     "path/filepath"
     "strings"
     "testing"
+
+    "github.com/Kangditya/persona-apps/apps/api/internal/database/migration"
 )
 
 func TestRunValidatesMigrationsAndListsSeeds(t *testing.T) {
@@ -16,11 +19,16 @@ func TestRunValidatesMigrationsAndListsSeeds(t *testing.T) {
     }
     t.Setenv("MIGRATIONS_DIR", directory)
 
+    migrations, err := migration.Discover(directory)
+    if err != nil {
+        t.Fatal(err)
+    }
+
     var output bytes.Buffer
     if err := Run(context.Background(), []string{"migrate", "validate"}, &output, &output); err != nil {
         t.Fatalf("validate error = %v", err)
     }
-    if !strings.Contains(output.String(), "valid: 5 migrations") {
+    if !strings.Contains(output.String(), fmt.Sprintf("valid: %d migrations", len(migrations))) {
         t.Fatalf("validate output = %q", output.String())
     }
 

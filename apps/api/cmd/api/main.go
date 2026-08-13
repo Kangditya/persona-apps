@@ -40,15 +40,17 @@ func run(log *slog.Logger) error {
     }
     defer db.Close()
 
-    var server *http.Server
+    var operationsAuth *auth.Service
     if configuration.Auth != nil {
-        operationsAuth, authErr := auth.New(context.Background(), db, *configuration.Auth)
+        configuredAuth, authErr := auth.New(context.Background(), db, *configuration.Auth)
         if authErr != nil {
             return authErr
         }
-        server = app.NewServer(configuration.HTTPAddress, db, log, operationsAuth)
-    } else {
-        server = app.NewServer(configuration.HTTPAddress, db, log, nil)
+        operationsAuth = configuredAuth
+    }
+    server, err := app.NewServer(configuration.HTTPAddress, db, log, configuration.Public, operationsAuth)
+    if err != nil {
+        return fmt.Errorf("create HTTP server: %w", err)
     }
     serverErrors := make(chan error, 1)
     go func() {

@@ -22,6 +22,11 @@ The long-running API requires:
   `key-id:base64-32-byte-key` ring;
 - an optional bounded `OPERATIONS_SESSION_MAX_LIFETIME`, no more than 24
   hours;
+- `PUBLIC_RATE_LIMIT_PER_MINUTE` (default `60`) and
+  `PUBLIC_RATE_LIMIT_BURST` (default `20`) for guest catalogue reads;
+- optional comma-separated `TRUSTED_PROXY_CIDRS` containing only exact,
+  non-global CIDRs for the reverse proxies that are permitted to supply
+  forwarded client IPs; leave it empty to use the direct peer IP;
 - private evidence object-storage credentials and bucket/container names,
   supplied only to the future evidence adapter.
 
@@ -36,6 +41,9 @@ it unset. It refuses to start in staging or production when that value is true.
 ## Security boundary
 
 - Terminate TLS at the public edge and forward only trusted request metadata.
+- Apply an ingress/CDN rate limit in addition to the API's bounded per-process
+  public limiter. Do not configure a broad proxy range merely to accept
+  forwarded headers.
 - Use Secure, HttpOnly, SameSite=Lax host-only Operations cookies.
 - Allow credentialed Operations requests only from the configured exact origins.
 - Use separate least-privilege database roles for the migration job and API.

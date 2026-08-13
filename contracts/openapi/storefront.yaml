@@ -3,8 +3,9 @@ info:
   title: Qurban Storefront API
   version: 1.0.0-draft
   description: |
-    Phase 1 public contract. It defines guest catalogue and common-purchase
-    behavior only; these routes are not implemented by the API yet.
+    Phase 1 public contract. Event and Offering discovery routes are
+    implemented; common-purchase routes remain contract-only until their
+    owning vertical slice is implemented.
 servers:
   - url: https://api.example.invalid
     description: Deployment-specific base URL
@@ -22,7 +23,11 @@ paths:
       tags: [Events]
       operationId: getActiveEvent
       summary: Get the active event
-      description: Availability is a snapshot. Checkout remains authoritative for quota.
+      description: |
+        Event discovery is independent of whether its registration window is
+        currently open. The returned window instants let the UI communicate
+        that state. Availability is a snapshot; checkout remains authoritative
+        for quota.
       parameters:
         - $ref: "#/components/parameters/RequestID"
       responses:
@@ -31,6 +36,8 @@ paths:
           headers:
             X-Request-ID:
               $ref: "#/components/headers/RequestID"
+            Cache-Control:
+              $ref: "#/components/headers/NoStoreCacheControl"
           content:
             application/json:
               schema:
@@ -42,6 +49,7 @@ paths:
                       - $ref: "#/components/schemas/PublicEvent"
                       - type: "null"
         "400": { $ref: "#/components/responses/InvalidRequest" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
@@ -50,27 +58,21 @@ paths:
       tags: [Offerings]
       operationId: listActiveEventOfferings
       summary: List published offerings for an active event
+      description: |
+        Returns only published Offerings for an active Event, ordered by code
+        ascending and then ID ascending. Availability is advisory. The opaque
+        cursor has no total count; registration-window state does not hide
+        catalogue discovery.
       parameters:
         - $ref: "#/components/parameters/EventID"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/RequestID"
       responses:
-        "200":
-          description: Published offerings available to the public.
-          headers:
-            X-Request-ID:
-              $ref: "#/components/headers/RequestID"
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [data]
-                properties:
-                  data:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/PublicOffering"
+        "200": { $ref: "#/components/responses/PublicOfferingList" }
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
@@ -88,6 +90,8 @@ paths:
           headers:
             X-Request-ID:
               $ref: "#/components/headers/RequestID"
+            Cache-Control:
+              $ref: "#/components/headers/NoStoreCacheControl"
           content:
             application/json:
               schema:
@@ -98,6 +102,7 @@ paths:
                     $ref: "#/components/schemas/PublicOffering"
         "400": { $ref: "#/components/responses/InvalidRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "500": { $ref: "#/components/responses/InternalError" }
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
@@ -278,12 +283,20 @@ components:
       description: A Purchase-scoped opaque credential, never an Operations session or payment credential.
   headers:
     RequestID:
-      description: Accepted X-Request-ID or a generated UUID request correlation identifier.
+      description: Accepted X-Request-ID or a generated opaque request correlation identifier.
       required: true
       schema:
         type: string
         maxLength: 64
         pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    RetryAfter:
+      description: Bounded delay in seconds before retrying a rate-limited request.
+      required: true
+      schema: { type: integer, minimum: 1, maximum: 60 }
+    NoStoreCacheControl:
+      description: Week 2 catalogue responses must not be stored because status and advisory quota can change.
+      required: true
+      schema: { type: string, const: no-store }
   parameters:
     RequestID:
       name: X-Request-ID
@@ -305,6 +318,17 @@ components:
         minLength: 8
         maxLength: 255
         pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{7,254}$"
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque continuation cursor for the documented offering order.
+      schema: { type: string, minLength: 1, maxLength: 512 }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
     EventID:
       name: event_id
       in: path
@@ -395,7 +419,9 @@ components:
         }
     RateLimited:
       description: Request rate is temporarily limited.
-      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/RequestID" }
+        Retry-After: { $ref: "#/components/headers/RetryAfter" }
       content:
         {
           application/json:
@@ -417,6 +443,30 @@ components:
           application/json:
             { schema: { $ref: "#/components/schemas/ErrorResponse" } },
         }
+    MethodNotAllowed:
+      description: The resource exists but does not support the requested method.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    PublicOfferingList:
+      description: Bounded page of published public Offerings.
+      headers:
+        X-Request-ID: { $ref: "#/components/headers/RequestID" }
+        Cache-Control: { $ref: "#/components/headers/NoStoreCacheControl" }
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: false
+            required: [data, page]
+            properties:
+              data:
+                type: array
+                items: { $ref: "#/components/schemas/PublicOffering" }
+              page: { $ref: "#/components/schemas/PublicOfferingPage" }
   schemas:
     PublicEvent:
       type: object
@@ -425,7 +475,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         event_year: { type: integer, minimum: 1900, maximum: 9999 }
-        name: { type: string, minLength: 1 }
+        name: { type: string, minLength: 1, maxLength: 255 }
         status: { type: string, const: ACTIVE }
         registration_opens_at: { type: string, format: date-time }
         registration_closes_at: { type: string, format: date-time }
@@ -442,25 +492,32 @@ components:
           price_minor,
           currency_code,
           participant_capacity,
+          available_participant_units,
           status,
         ]
       properties:
         id: { type: string, format: uuid }
         event_id: { type: string, format: uuid }
-        code: { type: string, minLength: 1 }
-        name: { type: string, minLength: 1 }
-        offering_kind: { type: string, minLength: 1 }
-        description: { type: string }
-        price_minor: { type: integer, minimum: 0 }
+        code: { type: string, minLength: 1, maxLength: 64 }
+        name: { type: string, minLength: 1, maxLength: 255 }
+        offering_kind: { type: string, minLength: 1, maxLength: 64 }
+        description: { type: string, maxLength: 10000 }
+        price_minor: { type: integer, minimum: 0, maximum: 9007199254740991 }
         currency_code: { type: string, pattern: "^[A-Z]{3}$" }
-        participant_capacity: { type: integer, minimum: 1 }
+        participant_capacity: { type: integer, minimum: 1, maximum: 2147483647 }
         available_participant_units:
-          {
-            type: integer,
-            minimum: 0,
-            description: Advisory availability snapshot.,
-          }
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 9007199254740991
+          description: Advisory availability snapshot. Null means no finite Event or Offering quota applies.
         status: { type: string, const: PUBLISHED }
+    PublicOfferingPage:
+      type: object
+      additionalProperties: false
+      required: [limit]
+      properties:
+        limit: { type: integer, minimum: 1, maximum: 100 }
+        next_cursor: { type: string, minLength: 1, maxLength: 512 }
     CreatePurchaseRequest:
       type: object
       additionalProperties: false
@@ -602,6 +659,7 @@ components:
                 - evidence_too_large
                 - unsupported_media_type
                 - rate_limited
+                - method_not_allowed
                 - internal_error
                 - service_unavailable
             message: { type: string }

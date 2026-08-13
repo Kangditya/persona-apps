@@ -6,6 +6,9 @@ import (
     "net/http"
     "time"
 
+    "github.com/Kangditya/persona-apps/apps/api/internal/config"
+    "github.com/Kangditya/persona-apps/apps/api/internal/event"
+    "github.com/Kangditya/persona-apps/apps/api/internal/offering"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/auth"
 )
 
@@ -15,19 +18,27 @@ type readinessChecker interface {
     PingContext(context.Context) error
 }
 
-func NewServer(address string, database readinessChecker, logger *slog.Logger, operationsAuth ...*auth.Service) *http.Server {
-    var authService *auth.Service
-    if len(operationsAuth) > 0 {
-        authService = operationsAuth[0]
+func NewServer(address string, database readinessChecker, logger *slog.Logger, public config.PublicConfig, operationsAuth *auth.Service) (*http.Server, error) {
+    events, offerings := publicReaders(database)
+    router, err := newRouter(database, logger, public, operationsAuth, events, offerings)
+    if err != nil {
+        return nil, err
     }
-
     return &http.Server{
         Addr:              address,
-        Handler:           newRouter(database, logger, authService),
+        Handler:           router,
         ReadHeaderTimeout: 5 * time.Second,
         ReadTimeout:       15 * time.Second,
         WriteTimeout:      15 * time.Second,
         IdleTimeout:       60 * time.Second,
         ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
+    }, nil
+}
+
+func publicReaders(database readinessChecker) (event.ActiveReader, offering.PublicCatalogueReader) {
+    queries, ok := database.(event.DBTX)
+    if !ok {
+        return nil, nil
     }
+    return event.NewRepository(queries), offering.NewRepository(queries)
 }

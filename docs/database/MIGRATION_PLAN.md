@@ -70,17 +70,23 @@ the database CLI and Make targets.
   ├── quota_reservations
   ├── operator_sessions
   └── safety constraints and indexes
+        │
+0006 Event and Offering versions and bounds
+  ├── qurban_events
+  ├── offerings
+  └── used-reservation aggregation index
 ```
 
 ## Migration inventory
 
-| Sequence | Migration                             | Type            | Tables affected                                                                                                                                                                                      | Purpose                                                                                                                                        | Backfill | Risk                                                                     |
-| -------: | ------------------------------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------ |
-|     0001 | `0001_qurban_foundation.up.sql`       | Schema-only     | `operator_users`, `parties`, `qurban_events`, `event_locations`, `offerings`                                                                                                                         | Establish identity references, annual event boundary, locations, and commercial offerings.                                                     | None.    | Low: all tables are new and additive.                                    |
-|     0002 | `0002_commerce_and_funding.up.sql`    | Schema-only     | `saving_accounts`, `giveaway_programs`, `giveaway_applications`, `giveaway_assignments`, `purchases`, purchase/participant histories, `payment_records`, payment history, `financial_ledger_entries` | Model three pre-purchase/channel sources, one canonical purchase, participant activation, payment verification, and append-only money effects. | None.    | Medium: channel/source checks and ledger semantics are core invariants.  |
-|     0003 | `0003_operations_and_platform.up.sql` | Schema-only     | livestock, inspection/location/status histories, allocations, allocation history, slaughter, distribution, audit, outbox, idempotency                                                                | Add operational lifecycle, capacity claims, event-day records, minimal distribution status, and platform integrity records.                    | None.    | Medium: allocation capacity still needs transactional application logic. |
-|     0004 | `0004_schema_seeds.up.sql`            | Metadata        | `schema_seeds`                                                                                                                                                                                       | Track deterministic seed execution separately from migration version state.                                                                    | None.    | Low: independent metadata table.                                         |
-|     0005 | `0005_mvp_commerce_safety.up.sql`     | Additive safety | qurban event, offering, purchase, payment, audit, intended participant, quota reservation, and session storage                                                                                       | Enforce Phase 1 lifecycle, quota, evidence, Purchase-token, and session safety without rewriting history.                                      | None.    | Medium: constraint changes require disposable-DB verification.           |
+| Sequence | Migration                                            | Type               | Tables affected                                                                                                                                                                                      | Purpose                                                                                                                                        | Backfill | Risk                                                                                               |
+| -------: | ---------------------------------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+|     0001 | `0001_qurban_foundation.up.sql`                      | Schema-only        | `operator_users`, `parties`, `qurban_events`, `event_locations`, `offerings`                                                                                                                         | Establish identity references, annual event boundary, locations, and commercial offerings.                                                     | None.    | Low: all tables are new and additive.                                                              |
+|     0002 | `0002_commerce_and_funding.up.sql`                   | Schema-only        | `saving_accounts`, `giveaway_programs`, `giveaway_applications`, `giveaway_assignments`, `purchases`, purchase/participant histories, `payment_records`, payment history, `financial_ledger_entries` | Model three pre-purchase/channel sources, one canonical purchase, participant activation, payment verification, and append-only money effects. | None.    | Medium: channel/source checks and ledger semantics are core invariants.                            |
+|     0003 | `0003_operations_and_platform.up.sql`                | Schema-only        | livestock, inspection/location/status histories, allocations, allocation history, slaughter, distribution, audit, outbox, idempotency                                                                | Add operational lifecycle, capacity claims, event-day records, minimal distribution status, and platform integrity records.                    | None.    | Medium: allocation capacity still needs transactional application logic.                           |
+|     0004 | `0004_schema_seeds.up.sql`                           | Metadata           | `schema_seeds`                                                                                                                                                                                       | Track deterministic seed execution separately from migration version state.                                                                    | None.    | Low: independent metadata table.                                                                   |
+|     0005 | `0005_mvp_commerce_safety.up.sql`                    | Additive safety    | qurban event, offering, purchase, payment, audit, intended participant, quota reservation, and session storage                                                                                       | Enforce Phase 1 lifecycle, quota, evidence, Purchase-token, and session safety without rewriting history.                                      | None.    | Medium: constraint changes require disposable-DB verification.                                     |
+|     0006 | `0006_add_event_offering_versions_and_bounds.up.sql` | Additive hardening | `qurban_events`, `offerings`, `quota_reservations`                                                                                                                                                   | Add optimistic versions, exact JSON-safe integer bounds, and the query-backed used-reservation aggregation index.                              | None.    | Medium: additive checks must be verified against existing rows and rollback drops version columns. |
 
 The matching `.down.sql` files are rollback scripts for each unit. Rollback is
 destructive for the unit being reverted and must only be used when the owning
@@ -151,6 +157,26 @@ deployment has confirmed that its data is disposable or separately backed up.
   Event status check. It is destructive for 0005 tables and correctly refuses
   rollback while SUSPENDED Events remain.
 
+### 0006 — Event and Offering versions and bounds
+
+- Tables: alters `qurban_events` and `offerings`; adds an index on
+  `quota_reservations` without changing reservation rows.
+- Columns: positive `bigint version NOT NULL DEFAULT 1` on Events and
+  Offerings.
+- Constraints: positive and JSON-safe version values; JSON-safe optional Event
+  and Offering participant quotas; JSON-safe Offering `price_minor`.
+- Indexes: `idx_quota_reservations_used_event_offering` covers Event/Offering
+  aggregation of `RESERVED` and `CONSUMED` participant units. Existing Event
+  and Offering unique indexes already support their deterministic list order,
+  so no duplicate list index is added.
+- Data migration: none. The additive default supplies version `1`; local
+  disposable-data preflight found no out-of-range values before the checks.
+- Compatibility impact: public and Operations response contracts must treat
+  versions as internal until the later Operations command API exposes them.
+- Rollback: drops only the 0006 index, named checks, and version columns. It
+  is destructive for version values and must only run against a disposable or
+  separately recovered deployment.
+
 ## Constraint and index classification
 
 ### Schema-only migrations
@@ -167,16 +193,18 @@ migration must be added rather than editing these files.
 
 ### Constraint-hardening migrations
 
-None in this task. Stable invariants are created with their tables. Future
-hardening may be required after real command flows establish policies for quota
-reservation, price locking, giveaway selection, distribution entitlement, and
-authentication scope.
+Migration 0006 hardens existing Event/Offering tables with bounds required by
+the API's exact-integer contract. Future hardening may still be required after
+real command flows establish policies for quota reservation, price locking,
+giveaway selection, distribution entitlement, and authentication scope.
 
 ### Index migrations
 
-No separate index migration is needed because the tables are new and indexes
-are part of each creation unit. The index names and query justification are
-listed in `docs/database/REVIEW.md`.
+Migration 0006 adds one narrow partial index after a representative
+availability aggregation plan showed the existing active-reservation index did
+not cover `CONSUMED` reservations. Existing Event and Offering list indexes
+were retained after their representative plans proved sufficient. The index
+names and query justification are listed in `docs/database/REVIEW.md`.
 
 ### Cleanup migrations
 
@@ -187,7 +215,7 @@ None. No existing fields or tables are renamed or deleted.
 Apply up migrations in ascending order. Roll back in descending order:
 
 ```text
-0005 down → 0004 down → 0003 down → 0002 down → 0001 down
+0006 down → 0005 down → 0004 down → 0003 down → 0002 down → 0001 down
 ```
 
 The down scripts intentionally use `DROP TABLE` and are destructive. They do
@@ -218,3 +246,7 @@ The approved migration tooling plan is implemented. Migration `0004` adds only
 seed metadata; the domain ERD and historical migrations remain unchanged.
 Reference seeds remain empty because no production bootstrap data is justified
 by the current schema. No Compose file or API startup path was changed.
+
+Migration `0006` is an additive follow-up: it does not edit historical pairs,
+adds no seed data, and derives its single new index from an observed
+availability query plan.

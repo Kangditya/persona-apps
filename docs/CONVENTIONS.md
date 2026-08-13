@@ -255,10 +255,11 @@ RECOMMENDED:
 
 TBD:
 
-- Storefront catalogue pagination, generic search/filter encoding, total-count
-  semantics, grouped-row pagination, and date-only representation are not yet
-  standardized. The current public offering list is intentionally not a
-  generic pagination precedent.
+- The public Offering list uses its endpoint-specific opaque cursor with a
+  default limit of 50, maximum of 100, deterministic `code ASC, id ASC`
+  order, and no total count. That decision does not standardize generic
+  Storefront pagination, search/filter encoding, grouped-row pagination, or
+  date-only representation.
 
 ### 4.4 Persistence, migrations, and seeds
 
