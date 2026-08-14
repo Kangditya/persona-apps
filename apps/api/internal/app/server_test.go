@@ -2,6 +2,7 @@ package app
 
 import (
     "context"
+    "database/sql"
     "encoding/json"
     "errors"
     "io"
@@ -14,6 +15,10 @@ import (
 
     "github.com/DATA-DOG/go-sqlmock"
     "github.com/Kangditya/persona-apps/apps/api/internal/config"
+    "github.com/Kangditya/persona-apps/apps/api/internal/event"
+    "github.com/Kangditya/persona-apps/apps/api/internal/offering"
+    "github.com/Kangditya/persona-apps/apps/api/internal/platform/auth"
+    "github.com/Kangditya/persona-apps/apps/api/internal/platform/idempotency"
 )
 
 type pingFunc func(context.Context) error
@@ -98,15 +103,17 @@ func TestRouterUsesAPIErrorBoundary(t *testing.T) {
     server := newTestServer(t, pingFunc(func(context.Context) error { return nil }), logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20})
 
     tests := []struct {
-        name       string
-        method     string
-        path       string
-        wantStatus int
-        wantCode   string
+        name        string
+        method      string
+        path        string
+        wantStatus  int
+        wantCode    string
+        wantNoStore bool
     }{
         {name: "non API route", method: http.MethodGet, path: "/missing", wantStatus: http.StatusNotFound},
         {name: "unknown API route", method: http.MethodGet, path: "/api/public/v1/missing", wantStatus: http.StatusNotFound, wantCode: "not_found"},
-        {name: "unavailable public dependency", method: http.MethodGet, path: "/api/public/v1/events/active", wantStatus: http.StatusServiceUnavailable, wantCode: "service_unavailable"},
+        {name: "unknown Operations route", method: http.MethodGet, path: "/api/operations/v1/missing", wantStatus: http.StatusNotFound, wantCode: "not_found", wantNoStore: true},
+        {name: "unavailable public dependency", method: http.MethodGet, path: "/api/public/v1/events/active", wantStatus: http.StatusServiceUnavailable, wantCode: "service_unavailable", wantNoStore: true},
         {name: "unsupported public method", method: http.MethodPost, path: "/api/public/v1/events/active", wantStatus: http.StatusMethodNotAllowed, wantCode: "method_not_allowed"},
     }
     for _, test := range tests {
@@ -125,8 +132,8 @@ func TestRouterUsesAPIErrorBoundary(t *testing.T) {
             if response.Header().Get("X-Request-ID") == "" {
                 t.Fatal("API response is missing request ID")
             }
-            if response.Header().Get("Cache-Control") != "no-store" && test.wantCode != "not_found" && test.wantCode != "method_not_allowed" {
-                t.Fatalf("public response cache control = %q", response.Header().Get("Cache-Control"))
+            if got := response.Header().Get("Cache-Control"); test.wantNoStore && got != "no-store" {
+                t.Fatalf("response cache control = %q", got)
             }
             var payload struct {
                 Error struct {
@@ -206,9 +213,91 @@ func TestServerComposesPublicEventRepository(t *testing.T) {
     }
 }
 
+func TestServerRegistersOperationsEventAndOfferingRoutesBehindAuthentication(t *testing.T) {
+    database, _, err := sqlmock.New()
+    if err != nil {
+        t.Fatal(err)
+    }
+    t.Cleanup(func() { _ = database.Close() })
+    authentication := newTestAuthentication(t, database)
+    cipher, err := idempotency.NewCipher([]idempotency.Key{{ID: "test", Value: make([]byte, 32)}})
+    if err != nil {
+        t.Fatal(err)
+    }
+    logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, authentication, event.NewOperationsHandler(database, cipher, logger), offering.NewOperationsHandler(database, cipher, logger))
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    routes := []struct {
+        method string
+        path   string
+    }{
+        {http.MethodGet, "/api/operations/v1/events"},
+        {http.MethodPost, "/api/operations/v1/events"},
+        {http.MethodGet, "/api/operations/v1/events/11111111-1111-1111-1111-111111111111"},
+        {http.MethodPatch, "/api/operations/v1/events/11111111-1111-1111-1111-111111111111"},
+        {http.MethodPost, "/api/operations/v1/events/11111111-1111-1111-1111-111111111111/publish"},
+        {http.MethodPost, "/api/operations/v1/events/11111111-1111-1111-1111-111111111111/activate"},
+        {http.MethodPost, "/api/operations/v1/events/11111111-1111-1111-1111-111111111111/suspend"},
+        {http.MethodPost, "/api/operations/v1/events/11111111-1111-1111-1111-111111111111/close"},
+        {http.MethodPost, "/api/operations/v1/events/11111111-1111-1111-1111-111111111111/archive"},
+        {http.MethodGet, "/api/operations/v1/events/11111111-1111-1111-1111-111111111111/offerings"},
+        {http.MethodPost, "/api/operations/v1/events/11111111-1111-1111-1111-111111111111/offerings"},
+        {http.MethodGet, "/api/operations/v1/offerings/22222222-2222-2222-2222-222222222222"},
+        {http.MethodPatch, "/api/operations/v1/offerings/22222222-2222-2222-2222-222222222222"},
+        {http.MethodPost, "/api/operations/v1/offerings/22222222-2222-2222-2222-222222222222/publish"},
+        {http.MethodPost, "/api/operations/v1/offerings/22222222-2222-2222-2222-222222222222/unavailable"},
+        {http.MethodPost, "/api/operations/v1/offerings/22222222-2222-2222-2222-222222222222/archive"},
+    }
+    for _, route := range routes {
+        response := httptest.NewRecorder()
+        server.Handler.ServeHTTP(response, httptest.NewRequest(route.method, route.path, nil))
+        if response.Code != http.StatusUnauthorized {
+            t.Fatalf("%s %s status = %d, want 401", route.method, route.path, response.Code)
+        }
+        if response.Header().Get("Cache-Control") != "no-store" {
+            t.Fatalf("%s %s cache control = %q", route.method, route.path, response.Header().Get("Cache-Control"))
+        }
+    }
+
+    response := httptest.NewRecorder()
+    server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, routes[2].path, nil))
+    if response.Code != http.StatusMethodNotAllowed || response.Header().Get("Cache-Control") != "no-store" {
+        t.Fatalf("unsupported Operations method status/cache = %d/%q", response.Code, response.Header().Get("Cache-Control"))
+    }
+}
+
+func newTestAuthentication(t *testing.T, database *sql.DB) *auth.Service {
+    t.Helper()
+    var issuer *httptest.Server
+    issuer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+        if request.URL.Path != "/.well-known/openid-configuration" {
+            http.NotFound(w, request)
+            return
+        }
+        _ = json.NewEncoder(w).Encode(map[string]string{
+            "issuer": issuer.URL, "authorization_endpoint": issuer.URL + "/authorize",
+            "token_endpoint": issuer.URL + "/token", "jwks_uri": issuer.URL + "/keys",
+        })
+    }))
+    t.Cleanup(issuer.Close)
+    service, err := auth.New(context.Background(), database, config.AuthConfig{
+        IssuerURL: issuer.URL, ClientID: "client", ClientSecret: "secret",
+        RedirectURL: "http://localhost/callback", PermissionClaim: "permissions",
+        OperationsWebOrigin: "http://localhost:5173", AllowedOrigins: map[string]struct{}{"http://localhost:5173": {}},
+        CookieEncryptionKey: make([]byte, 32), MaxSessionLifetime: time.Hour,
+    })
+    if err != nil {
+        t.Fatal(err)
+    }
+    return service
+}
+
 func newTestServer(t *testing.T, database readinessChecker, logger *slog.Logger, public config.PublicConfig) *http.Server {
     t.Helper()
-    server, err := NewServer(":0", database, logger, public, nil)
+    server, err := NewServer(":0", database, logger, public, nil, nil, nil)
     if err != nil {
         t.Fatal(err)
     }

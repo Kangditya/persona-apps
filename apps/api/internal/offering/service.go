@@ -95,6 +95,9 @@ func Update(parent event.Event, current Offering, input UpdateInput) (Mutation, 
     if err := validateOffering(&next); err != nil {
         return Mutation{}, err
     }
+    if sameConfiguration(current, next) {
+        return Mutation{Offering: clone(current), After: current.Snapshot()}, nil
+    }
     if err := incrementVersion(&next); err != nil {
         return Mutation{}, err
     }
@@ -105,6 +108,21 @@ func Update(parent event.Event, current Offering, input UpdateInput) (Mutation, 
         Before:   &before,
         After:    next.Snapshot(),
     }, nil
+}
+
+func sameConfiguration(left, right Offering) bool {
+    return left.Name == right.Name &&
+        sameString(left.Description, right.Description) &&
+        left.PriceMinor == right.PriceMinor &&
+        equalOptionalInt64(left.ParticipantQuota, right.ParticipantQuota)
+}
+
+func sameString(left, right *string) bool {
+    return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
+func equalOptionalInt64(left, right *int64) bool {
+    return left == nil && right == nil || left != nil && right != nil && *left == *right
 }
 
 func Publish(parent event.Event, current Offering, input PublishInput) (Mutation, error) {

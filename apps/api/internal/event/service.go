@@ -1,6 +1,9 @@
 package event
 
-import "fmt"
+import (
+    "fmt"
+    "time"
+)
 
 const (
     ActionCreate   = "event.create"
@@ -78,6 +81,9 @@ func Update(current Event, input UpdateInput) (Mutation, error) {
     if err := validateConfiguration(&next); err != nil {
         return Mutation{}, err
     }
+    if sameConfiguration(current, next) {
+        return Mutation{Event: clone(current), After: current.Snapshot()}, nil
+    }
     if err := incrementVersion(&next); err != nil {
         return Mutation{}, err
     }
@@ -88,6 +94,21 @@ func Update(current Event, input UpdateInput) (Mutation, error) {
         Before: &before,
         After:  next.Snapshot(),
     }, nil
+}
+
+func sameConfiguration(left, right Event) bool {
+    return left.Name == right.Name &&
+        sameTime(left.RegistrationOpensAt, right.RegistrationOpensAt) &&
+        sameTime(left.RegistrationClosesAt, right.RegistrationClosesAt) &&
+        sameInt64(left.ParticipantQuota, right.ParticipantQuota)
+}
+
+func sameTime(left, right *time.Time) bool {
+    return left == nil && right == nil || left != nil && right != nil && left.Equal(*right)
+}
+
+func sameInt64(left, right *int64) bool {
+    return left == nil && right == nil || left != nil && right != nil && *left == *right
 }
 
 func Publish(current Event, input TransitionInput) (Mutation, error) {

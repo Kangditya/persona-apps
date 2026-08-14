@@ -13,6 +13,7 @@ import (
     "errors"
     "fmt"
     "net/http"
+    "sort"
     "strings"
     "time"
 
@@ -38,6 +39,7 @@ type Principal struct {
     OperatorID  string
     DisplayName string
     Permissions map[string]struct{}
+    ExpiresAt   time.Time
 }
 
 type principalContextKey struct{}
@@ -45,6 +47,10 @@ type principalContextKey struct{}
 func FromContext(ctx context.Context) (Principal, bool) {
     value, ok := ctx.Value(principalContextKey{}).(Principal)
     return value, ok
+}
+
+func (s *Service) AllowedOrigins() map[string]struct{} {
+    return s.config.AllowedOrigins
 }
 
 type Service struct {
@@ -185,7 +191,7 @@ func (s *Service) callback(c *gin.Context) {
 }
 
 func (s *Service) session(c *gin.Context) {
-    r, w := c.Request, c.Writer
+    r := c.Request
     principal, ok := s.authenticate(r)
     if !ok {
         httpx.WriteError(c, http.StatusUnauthorized, "unauthenticated", "authentication required", httpx.RequestID(r.Context()), nil)
@@ -200,8 +206,9 @@ func (s *Service) session(c *gin.Context) {
     for permission := range principal.Permissions {
         permissions = append(permissions, permission)
     }
-    w.Header().Set("Content-Type", "application/json")
-    _ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"operator": map[string]string{"id": principal.OperatorID, "display_name": principal.DisplayName}, "permissions": permissions, "csrf_token": csrfToken}})
+    sort.Strings(permissions)
+    c.Header("Cache-Control", "no-store")
+    c.JSON(http.StatusOK, map[string]any{"data": map[string]any{"operator": map[string]string{"id": principal.OperatorID, "display_name": principal.DisplayName}, "permissions": permissions, "expires_at": principal.ExpiresAt.UTC(), "csrf_token": csrfToken}})
 }
 
 func (s *Service) logout(c *gin.Context) {
@@ -238,7 +245,7 @@ func (s *Service) authenticate(r *http.Request) (Principal, bool) {
     if json.Unmarshal([]byte(permissionsJSON), &permissions) != nil {
         return Principal{}, false
     }
-    result := Principal{OperatorID: operatorID, DisplayName: displayName, Permissions: map[string]struct{}{}}
+    result := Principal{OperatorID: operatorID, DisplayName: displayName, Permissions: map[string]struct{}{}, ExpiresAt: expiry.UTC()}
     for _, permission := range permissions {
         if _, allowed := permissionAllowlist[permission]; allowed {
             result.Permissions[permission] = struct{}{}
@@ -336,11 +343,17 @@ func claimedPermissions(raw json.RawMessage) ([]string, error) {
         return nil, errors.New("permission claim must be an array")
     }
     result := make([]string, 0, len(values))
+    seen := map[string]struct{}{}
     for _, value := range values {
         if _, allowed := permissionAllowlist[value]; allowed {
+            if _, duplicate := seen[value]; duplicate {
+                continue
+            }
+            seen[value] = struct{}{}
             result = append(result, value)
         }
     }
+    sort.Strings(result)
     return result, nil
 }
 

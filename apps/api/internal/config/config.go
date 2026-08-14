@@ -37,9 +37,10 @@ type APIConfig struct {
 }
 
 type PublicConfig struct {
-    RateLimitPerMinute int
-    RateLimitBurst     int
-    TrustedProxyCIDRs  []string
+    RateLimitPerMinute       int
+    RateLimitBurst           int
+    TrustedProxyCIDRs        []string
+    StorefrontAllowedOrigins map[string]struct{}
 }
 
 type AuthConfig struct {
@@ -97,14 +98,14 @@ func LoadAPI() (APIConfig, error) {
     if !configured && (base.Environment == Staging || base.Environment == Production) {
         return APIConfig{}, errors.New("OIDC and response-encryption configuration is required outside development and test")
     }
-    public, err := loadPublic()
+    public, err := loadPublic(base.Environment)
     if err != nil {
         return APIConfig{}, err
     }
     return APIConfig{Config: base, Auth: auth, Public: public}, nil
 }
 
-func loadPublic() (PublicConfig, error) {
+func loadPublic(environment Environment) (PublicConfig, error) {
     perMinute, err := positiveIntFromEnvironment("PUBLIC_RATE_LIMIT_PER_MINUTE", 60)
     if err != nil {
         return PublicConfig{}, err
@@ -117,7 +118,29 @@ func loadPublic() (PublicConfig, error) {
     if err != nil {
         return PublicConfig{}, err
     }
-    return PublicConfig{RateLimitPerMinute: perMinute, RateLimitBurst: burst, TrustedProxyCIDRs: trustedProxyCIDRs}, nil
+    storefrontOrigins, err := parseOrigins("STOREFRONT_ALLOWED_ORIGINS", os.Getenv("STOREFRONT_ALLOWED_ORIGINS"), environment)
+    if err != nil {
+        return PublicConfig{}, err
+    }
+    return PublicConfig{RateLimitPerMinute: perMinute, RateLimitBurst: burst, TrustedProxyCIDRs: trustedProxyCIDRs, StorefrontAllowedOrigins: storefrontOrigins}, nil
+}
+
+func parseOrigins(name, value string, environment Environment) (map[string]struct{}, error) {
+    origins := map[string]struct{}{}
+    if strings.TrimSpace(value) == "" {
+        return origins, nil
+    }
+    for _, raw := range strings.Split(value, ",") {
+        origin := strings.TrimSpace(raw)
+        if origin == "" {
+            return nil, fmt.Errorf("%s must contain exact origins", name)
+        }
+        if err := validateOrigin(name, origin, environment); err != nil {
+            return nil, err
+        }
+        origins[origin] = struct{}{}
+    }
+    return origins, nil
 }
 
 func positiveIntFromEnvironment(name string, fallback int) (int, error) {
@@ -244,6 +267,12 @@ func validateURL(name, value string, environment Environment) error {
     if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
         return fmt.Errorf("%s must be an absolute origin URL", name)
     }
+    if parsed.Scheme != "http" && parsed.Scheme != "https" {
+        return fmt.Errorf("%s must use HTTP or HTTPS", name)
+    }
+    if strings.Contains(parsed.Hostname(), "*") {
+        return fmt.Errorf("%s must not contain a wildcard host", name)
+    }
     if parsed.Scheme != "https" && !(environment == Development || environment == Test) {
         return fmt.Errorf("%s must use HTTPS outside development and test", name)
     }
@@ -255,7 +284,7 @@ func validateOrigin(name, value string, environment Environment) error {
         return err
     }
     parsed, _ := url.Parse(value)
-    if parsed.Path != "" && parsed.Path != "/" {
+    if parsed.Path != "" {
         return fmt.Errorf("%s must not include a path", name)
     }
     return nil

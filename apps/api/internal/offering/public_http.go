@@ -10,7 +10,6 @@ import (
 
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/httpx"
     "github.com/gin-gonic/gin"
-    "github.com/google/uuid"
 )
 
 type PublicCatalogueReader interface {
@@ -104,12 +103,12 @@ func RegisterPublicRoutes(group *gin.RouterGroup, reader PublicCatalogueReader, 
 
 func publicUUID(c *gin.Context, parameter string) (string, bool) {
     raw := c.Param(parameter)
-    parsed, err := uuid.Parse(raw)
-    if err != nil || parsed == uuid.Nil || parsed.String() != raw {
+    parsed, err := httpx.CanonicalUUID(raw)
+    if err != nil {
         writeInvalidRequest(c, "invalid "+parameter)
         return "", false
     }
-    return raw, true
+    return parsed, true
 }
 
 func publicListInput(c *gin.Context) (ListInput, error) {

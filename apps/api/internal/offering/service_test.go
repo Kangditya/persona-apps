@@ -48,6 +48,7 @@ func TestCreateValidatesOfferingAndParent(t *testing.T) {
         {name: "zero capacity", input: replaceCreate(validCreateInput(), func(input *CreateInput) { input.ParticipantCapacity = 0 })},
         {name: "large capacity", input: replaceCreate(validCreateInput(), func(input *CreateInput) { input.ParticipantCapacity = MaxParticipantCapacity + 1 })},
         {name: "negative quota", input: replaceCreate(validCreateInput(), func(input *CreateInput) { input.ParticipantQuota = int64Pointer(-1) })},
+        {name: "unsafe quota", input: replaceCreate(validCreateInput(), func(input *CreateInput) { input.ParticipantQuota = int64Pointer(MaxSafeInteger + 1) })},
     }
     for _, test := range tests {
         t.Run(test.name, func(t *testing.T) {
@@ -111,6 +112,17 @@ func TestUpdateHonorsCommercialMutationPolicy(t *testing.T) {
     }
 }
 
+func TestUpdateReturnsCurrentOfferingForNormalizedNoOp(t *testing.T) {
+    current := testOffering(StatusDraft)
+    mutation, err := Update(event.Event{Status: event.StatusActive}, current, UpdateInput{ExpectedVersion: 1, Name: stringPointer("  Cow Share  ")})
+    if err != nil {
+        t.Fatalf("Update() error = %v", err)
+    }
+    if mutation.Offering.Version != 1 || mutation.Action != "" || mutation.Before != nil || mutation.After.Version != 1 {
+        t.Fatalf("Update() no-op mutation = %#v", mutation)
+    }
+}
+
 func TestLifecyclePreservesFirstPublicationAndCleanup(t *testing.T) {
     publication := time.Date(2026, time.January, 1, 8, 0, 0, 0, time.FixedZone("WIB", 7*60*60))
     mutation, err := Publish(event.Event{Status: event.StatusPublished}, testOffering(StatusDraft), PublishInput{ExpectedVersion: 1, OccurredAt: publication})
@@ -150,6 +162,75 @@ func TestLifecyclePreservesFirstPublicationAndCleanup(t *testing.T) {
                 t.Fatalf("Archive() = %#v, %v", archived, err)
             }
         })
+    }
+}
+
+func TestLifecycleMatrixRejectsEveryOtherStatus(t *testing.T) {
+    statuses := []Status{StatusDraft, StatusPublished, StatusUnavailable, StatusArchived}
+    occurredAt := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+    commands := []struct {
+        name    string
+        command func(Offering) (Mutation, error)
+        allowed map[Status]Status
+        action  string
+        outbox  string
+    }{
+        {
+            name: "publish",
+            command: func(current Offering) (Mutation, error) {
+                return Publish(event.Event{Status: event.StatusActive}, current, PublishInput{ExpectedVersion: 1, OccurredAt: occurredAt})
+            },
+            allowed: map[Status]Status{StatusDraft: StatusPublished, StatusUnavailable: StatusPublished},
+            action:  ActionPublish,
+            outbox:  OutboxOfferingPublished,
+        },
+        {
+            name: "unavailable",
+            command: func(current Offering) (Mutation, error) {
+                return MarkUnavailable(current, TransitionInput{ExpectedVersion: 1})
+            },
+            allowed: map[Status]Status{StatusPublished: StatusUnavailable},
+            action:  ActionUnavailable,
+            outbox:  OutboxOfferingUnavailable,
+        },
+        {
+            name: "archive",
+            command: func(current Offering) (Mutation, error) {
+                return Archive(current, TransitionInput{ExpectedVersion: 1})
+            },
+            allowed: map[Status]Status{StatusDraft: StatusArchived, StatusPublished: StatusArchived, StatusUnavailable: StatusArchived},
+            action:  ActionArchive,
+            outbox:  OutboxOfferingArchived,
+        },
+    }
+    for _, command := range commands {
+        for _, status := range statuses {
+            t.Run(command.name+"_from_"+string(status), func(t *testing.T) {
+                mutation, err := command.command(testOffering(status))
+                target, allowed := command.allowed[status]
+                if !allowed {
+                    if !errors.Is(err, ErrInvalidTransition) {
+                        t.Fatalf("command error = %v, want invalid transition", err)
+                    }
+                    return
+                }
+                if err != nil {
+                    t.Fatalf("command error = %v", err)
+                }
+                if mutation.Offering.Status != target || mutation.Offering.Version != 2 || mutation.Action != command.action || mutation.OutboxEventType != command.outbox || !mutation.RetrySensitive || mutation.Before == nil {
+                    t.Fatalf("command result = %#v", mutation)
+                }
+            })
+        }
+    }
+
+    if _, err := MarkUnavailable(testOffering(StatusPublished), TransitionInput{ExpectedVersion: 2}); !errors.Is(err, ErrStaleVersion) {
+        t.Fatalf("stale lifecycle error = %v", err)
+    }
+    maximum := testOffering(StatusPublished)
+    maximum.Version = MaxSafeInteger
+    if _, err := MarkUnavailable(maximum, TransitionInput{ExpectedVersion: MaxSafeInteger}); !errors.Is(err, ErrInvalidInput) {
+        t.Fatalf("maximum version error = %v", err)
     }
 }
 

@@ -13,8 +13,11 @@ import (
 
     "github.com/Kangditya/persona-apps/apps/api/internal/app"
     "github.com/Kangditya/persona-apps/apps/api/internal/config"
+    "github.com/Kangditya/persona-apps/apps/api/internal/event"
+    "github.com/Kangditya/persona-apps/apps/api/internal/offering"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/auth"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/database"
+    "github.com/Kangditya/persona-apps/apps/api/internal/platform/idempotency"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/logger"
 )
 
@@ -41,14 +44,22 @@ func run(log *slog.Logger) error {
     defer db.Close()
 
     var operationsAuth *auth.Service
+    var eventOperations *event.OperationsHandler
+    var offeringOperations *offering.OperationsHandler
     if configuration.Auth != nil {
         configuredAuth, authErr := auth.New(context.Background(), db, *configuration.Auth)
         if authErr != nil {
             return authErr
         }
         operationsAuth = configuredAuth
+        cipher, cipherErr := idempotency.NewCipher(configuration.Auth.ResponseEncryptionKeys)
+        if cipherErr != nil {
+            return fmt.Errorf("create idempotency cipher: %w", cipherErr)
+        }
+        eventOperations = event.NewOperationsHandler(db, cipher, log)
+        offeringOperations = offering.NewOperationsHandler(db, cipher, log)
     }
-    server, err := app.NewServer(configuration.HTTPAddress, db, log, configuration.Public, operationsAuth)
+    server, err := app.NewServer(configuration.HTTPAddress, db, log, configuration.Public, operationsAuth, eventOperations, offeringOperations)
     if err != nil {
         return fmt.Errorf("create HTTP server: %w", err)
     }

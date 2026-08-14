@@ -1,6 +1,6 @@
 module github.com/Kangditya/persona-apps/apps/api
 
-go 1.26.5
+go 1.26.6
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2

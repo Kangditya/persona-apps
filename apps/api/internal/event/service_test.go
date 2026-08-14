@@ -114,43 +114,65 @@ func TestUpdateRejectsStaleVersionAndEmptyPatch(t *testing.T) {
     }
 }
 
-func TestLifecycleCommandsExposeExactEffects(t *testing.T) {
-    tests := []struct {
-        name       string
-        current    Status
-        command    func(Event, TransitionInput) (Mutation, error)
-        wantStatus Status
-        wantAction string
-        wantOutbox string
-        wantErr    error
-    }{
-        {name: "publish", current: StatusDraft, command: Publish, wantStatus: StatusPublished, wantAction: ActionPublish, wantOutbox: OutboxEventPublished},
-        {name: "activate published", current: StatusPublished, command: Activate, wantStatus: StatusActive, wantAction: ActionActivate, wantOutbox: OutboxEventActivated},
-        {name: "reactivate suspended", current: StatusSuspended, command: Activate, wantStatus: StatusActive, wantAction: ActionActivate, wantOutbox: OutboxEventActivated},
-        {name: "suspend", current: StatusActive, command: Suspend, wantStatus: StatusSuspended, wantAction: ActionSuspend, wantOutbox: OutboxEventSuspended},
-        {name: "close active", current: StatusActive, command: Close, wantStatus: StatusClosed, wantAction: ActionClose, wantOutbox: OutboxEventClosed},
-        {name: "close suspended", current: StatusSuspended, command: Close, wantStatus: StatusClosed, wantAction: ActionClose, wantOutbox: OutboxEventClosed},
-        {name: "archive", current: StatusClosed, command: Archive, wantStatus: StatusArchived, wantAction: ActionArchive, wantOutbox: OutboxEventArchived},
-        {name: "cannot activate draft", current: StatusDraft, command: Activate, wantErr: ErrInvalidTransition},
-        {name: "cannot publish archived", current: StatusArchived, command: Publish, wantErr: ErrInvalidTransition},
-        {name: "cannot close published", current: StatusPublished, command: Close, wantErr: ErrInvalidTransition},
+func TestUpdateReturnsCurrentEventForNormalizedNoOp(t *testing.T) {
+    current := testEvent(StatusDraft)
+    current.ID = "11111111-1111-1111-1111-111111111111"
+    current.Name = "Qurban 2026"
+    mutation, err := Update(current, UpdateInput{ExpectedVersion: 1, Name: stringPointer("  Qurban 2026  ")})
+    if err != nil {
+        t.Fatalf("Update() error = %v", err)
     }
-    for _, test := range tests {
-        t.Run(test.name, func(t *testing.T) {
-            mutation, err := test.command(testEvent(test.current), TransitionInput{ExpectedVersion: 1})
-            if test.wantErr != nil {
-                if !errors.Is(err, test.wantErr) {
-                    t.Fatalf("command error = %v, want %v", err, test.wantErr)
+    if mutation.Event.Version != 1 || mutation.Action != "" || mutation.Before != nil || mutation.After.Version != 1 {
+        t.Fatalf("Update() no-op mutation = %#v", mutation)
+    }
+}
+
+func TestLifecycleCommandsExposeExactEffects(t *testing.T) {
+    statuses := []Status{StatusDraft, StatusPublished, StatusActive, StatusSuspended, StatusClosed, StatusArchived}
+    commands := []struct {
+        name    string
+        command func(Event, TransitionInput) (Mutation, error)
+        allowed map[Status]Status
+        action  string
+        outbox  string
+    }{
+        {name: "publish", command: Publish, allowed: map[Status]Status{StatusDraft: StatusPublished}, action: ActionPublish, outbox: OutboxEventPublished},
+        {name: "activate", command: Activate, allowed: map[Status]Status{StatusPublished: StatusActive, StatusSuspended: StatusActive}, action: ActionActivate, outbox: OutboxEventActivated},
+        {name: "suspend", command: Suspend, allowed: map[Status]Status{StatusActive: StatusSuspended}, action: ActionSuspend, outbox: OutboxEventSuspended},
+        {name: "close", command: Close, allowed: map[Status]Status{StatusActive: StatusClosed, StatusSuspended: StatusClosed}, action: ActionClose, outbox: OutboxEventClosed},
+        {name: "archive", command: Archive, allowed: map[Status]Status{StatusClosed: StatusArchived}, action: ActionArchive, outbox: OutboxEventArchived},
+    }
+    for _, command := range commands {
+        for _, status := range statuses {
+            t.Run(command.name+"_from_"+string(status), func(t *testing.T) {
+                mutation, err := command.command(testEvent(status), TransitionInput{ExpectedVersion: 1})
+                target, allowed := command.allowed[status]
+                if !allowed {
+                    if !errors.Is(err, ErrInvalidTransition) {
+                        t.Fatalf("command error = %v, want invalid transition", err)
+                    }
+                    return
                 }
-                return
-            }
-            if err != nil {
-                t.Fatalf("command error = %v", err)
-            }
-            if mutation.Event.Status != test.wantStatus || mutation.Event.Version != 2 || mutation.Action != test.wantAction || mutation.OutboxEventType != test.wantOutbox || !mutation.RetrySensitive || mutation.Before == nil {
-                t.Fatalf("command result = %#v", mutation)
-            }
-        })
+                if err != nil {
+                    t.Fatalf("command error = %v", err)
+                }
+                if mutation.Event.Status != target || mutation.Event.Version != 2 || mutation.Action != command.action || mutation.OutboxEventType != command.outbox || !mutation.RetrySensitive || mutation.Before == nil {
+                    t.Fatalf("command result = %#v", mutation)
+                }
+            })
+        }
+    }
+
+    if _, err := Publish(testEvent(StatusDraft), TransitionInput{ExpectedVersion: 2}); !errors.Is(err, ErrStaleVersion) {
+        t.Fatalf("stale lifecycle error = %v", err)
+    }
+    if _, err := Publish(testEvent(StatusDraft), TransitionInput{}); !errors.Is(err, ErrInvalidInput) {
+        t.Fatalf("zero expected version error = %v", err)
+    }
+    maximum := testEvent(StatusDraft)
+    maximum.Version = MaxSafeInteger
+    if _, err := Publish(maximum, TransitionInput{ExpectedVersion: MaxSafeInteger}); !errors.Is(err, ErrInvalidInput) {
+        t.Fatalf("maximum version error = %v", err)
     }
 }
 

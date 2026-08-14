@@ -23,9 +23,9 @@ It currently contains:
 - CI and repository validation commands.
 
 The Event and Offering domain cores, PostgreSQL repositories, additive
-version/bounds migration, and public catalogue routes are implemented.
-Operations catalogue commands/routes and Storefront catalogue screens remain
-pending.
+version/bounds migration, public catalogue routes, and permission-gated
+Operations command/query routes are implemented. Operations Event/Offering and
+Storefront public catalogue screens are implemented.
 
 The product direction has changed from a generic single-brand commerce and POS platform into a:
 
@@ -107,9 +107,12 @@ Current frontend stack:
 - Vitest.
 
 The applications now include a TanStack Query provider, typed API transport
-boundaries, and a non-authoritative API-availability diagnostic. Storefront
-catalogue screens and all business mutations remain unimplemented; the W2-04
-public API surface is available for the eventual catalogue UI.
+boundaries, and a non-authoritative API-availability diagnostic. Storefront and
+Operations use separate route registries and API surfaces. Operations has
+authenticated Event/Offering list, create, detail, edit, lifecycle, conflict,
+and logout flows against the W2-05 API. Storefront has active-Event landing,
+published-Offering list/detail, safe public states, exact minor-unit price, and
+advisory availability flows against the W2-04 API.
 
 Both applications also consume `@persona-apps/ui`, which owns shared semantic
 tokens and accessible atoms/molecules, and have independent production PWA
@@ -137,12 +140,14 @@ Current placeholder routes:
 #### Storefront Web
 
 ```text
-/
-/offerings
 /purchase-tracking
 ```
 
-These routes are capability-aligned placeholders only. They do not implement authentication, catalogue, purchasing, payment verification, or dashboard behavior.
+`/operator-login` now owns the real OIDC session/sign-in/logout state. The
+remaining Operations routes and Storefront `/purchase-tracking` route in these
+lists are capability-aligned placeholders. Event/Offering administration is
+implemented under Operations `/events`; public discovery is implemented under
+Storefront `/` and `/offerings`.
 
 ### Backend
 
@@ -165,6 +170,13 @@ Current backend capabilities:
   detail routes with active/published filtering;
 - request-correlated public JSON errors, recovery, no-store catalogue headers,
   bounded per-process guest rate limiting, and disabled-by-default proxy trust.
+- permission-gated Operations Event/Offering list, detail, create, patch, and
+  lifecycle routes under `/api/operations/v1`;
+- strict 64 KiB JSON command decoding, exact Origin/CSRF checks, optimistic
+  versions, 24-hour command replay, minimized audit, and lifecycle outbox
+  writes in caller-owned transactions;
+- exact-origin credentialed Operations CORS and optional exact-origin
+  Storefront CORS, both disabled when no origins are configured.
 
 Framework-neutral Event and Offering modules enforce validated annual and
 commercial configuration, version-aware lifecycle transitions, immutable
@@ -188,11 +200,11 @@ Implemented platform foundations:
 - request-ID middleware, structured error envelopes, transaction helper,
   caller-transaction audit writer, and encrypted idempotency replay executor.
 
-ADR-043 through ADR-045 define these contracts. The API currently has only
-guest Event/Offering read handlers; Storefront Purchase access and transactional
-platform composition for domain commands remain unimplemented. Auth routes
-exist only when the complete fail-closed configuration is present; no secret
-value is committed.
+ADR-043 through ADR-045 define these contracts. Event/Offering Operations
+commands now compose the platform foundations transactionally; Storefront
+Purchase access remains unimplemented. Auth and protected business routes exist
+only when the complete fail-closed configuration is present; no secret value is
+committed.
 
 ### Infrastructure
 
@@ -222,10 +234,10 @@ Implemented as contracts, placeholders, or shells:
 - application-owned PWA manifests and service-worker configuration.
 
 The separate public and operations OpenAPI contracts define Phase 1 request,
-response, permission, request-ID, CSRF, idempotency, and error behavior. The
-public Event/Offering discovery contract has matching API routes; Purchase and
-Operations contracts remain contract-only, and no Storefront business query or
-screen is implemented yet.
+response, permission, request-ID, CSRF, idempotency, and error behavior. Public
+and Operations Event/Offering contract paths have matching API routes; Purchase
+and later Operations groups remain contract-only. Storefront Event/Offering
+discovery now consumes only the minimized public contract.
 
 ### Database lifecycle tooling
 
@@ -245,8 +257,8 @@ and scripted in the six numbered migration pairs under
 operations, audit, outbox, command idempotency, seed metadata, and Phase 1
 commerce-safety constraints for Event suspension, Offering quota, intended
 participants, quota reservations, evidence metadata, Purchase tokens, and
-Operations sessions. Event/Offering repositories and public read routes use
-the relevant tables; no business command uses them yet.
+Operations sessions. Event/Offering repositories and both public reads and
+privileged commands use the relevant tables.
 
 The reference seed group is intentionally empty. The development group only
 contains `development.sample-event`. No migration or seed has been run against
@@ -328,25 +340,6 @@ policy; W1-05 and W1-06 own endpoint and runtime follow-up.
 ---
 
 ## Not Implemented
-
-### Product Foundation
-
-- Qurban Event;
-- event lifecycle;
-- event configuration;
-- event-specific capacity;
-- event-specific offering availability;
-- event history and archival behavior.
-
-### Offering
-
-- Qurban Offering Catalogue;
-- offering types;
-- pricing;
-- offering availability;
-- offering publication;
-- participant capacity rules;
-- livestock share rules.
 
 ### Purchasing
 
@@ -455,17 +448,13 @@ policy; W1-05 and W1-06 own endpoint and runtime follow-up.
 ### Identity and Access
 
 - storefront authentication;
-- operator authentication;
 - user profiles;
 - roles;
-- permissions;
 - event-scoped access;
 - audit access.
 
 ### Administration and Reporting
 
-- event administration;
-- offering administration;
 - purchasing administration;
 - payment verification queues;
 - saving administration;
@@ -480,12 +469,7 @@ policy; W1-05 and W1-06 own endpoint and runtime follow-up.
 
 ### Platform Capabilities
 
-- business repositories and queries over the scripted schema;
 - disposable-PostgreSQL migration integration verification;
-- audit framework;
-- permission enforcement;
-- request idempotency;
-- outbox;
 - background worker;
 - notification delivery;
 - operational projections;
@@ -526,7 +510,7 @@ Current replacements:
 
 ## Current Verification State
 
-Last recorded implementation verification: **2026-08-13**
+Last recorded implementation verification: **2026-08-14**
 
 The product/architecture and frontend-artifact alignment has been verified
 with:
@@ -535,22 +519,41 @@ with:
 make validate
 ```
 
-The Event/Offering implementation passed focused Go formatting, Go vet, full
-Go tests with disposable PostgreSQL, Go build, Storefront/Operations frontend
-tests, type checks, linting, builds, high-severity JavaScript audit, reachable
-Go vulnerability scan, and Compose configuration validation. The scan has zero
-reachable-symbol and imported-package findings; only the upstream-unfixed,
-uncalled `golang.org/x/crypto/openpgp` module advisory remains. The W2-04
-archive records that `make validate` is otherwise blocked only by six untouched
-pre-existing Go formatter-baseline files.
+W2-05 through W2-08 are implemented and verified. The Event/Offering slice
+passed `make validate`, the full Go suite with database integration enabled
+against PostgreSQL 18, Go vet/build, focused race tests, a fresh-database
+migration/seed/down/up cycle, Compose validation, and an API container build.
+The composed Operations regression proves exact audit, outbox, and replay
+effects plus public active/published visibility and historical Event quota and
+Offering price values.
+
+Redocly CLI 2.46.1 validates both OpenAPI contracts with no errors; six
+pre-existing documentation warnings remain. Production pnpm audit reports no
+known vulnerabilities. A current `govulncheck` 1.7.0 scan found six reachable
+Go 1.26.5 standard-library advisories, so both the module and container builder
+are now pinned to fixed Go 1.26.6. The 1.26.6 rescan reports zero reachable or
+imported-package vulnerabilities. The sole module-only result is the uncalled,
+unimported, upstream-unfixed `golang.org/x/crypto/openpgp` advisory.
 
 Frontend type checking, focused tests, linting, builds, PWA manifest output,
-and service-worker precache policy are verified. The public read behavior is
-verified; Purchase and Operations command behavior is not implemented.
+and service-worker precache policy are verified. Operations Event/Offering
+screens were exercised in a real browser against the real local API and
+PostgreSQL, including OIDC session bootstrap, create/edit/lifecycle commands,
+stale-version recovery, rotated-CSRF recovery, logout, direct route loading,
+and a 360-pixel layout. The temporary local OIDC verifier used only disposable
+test identity data and was not shipped. Storefront Event/Offering screens were
+also exercised against the real local API and PostgreSQL for populated, empty,
+no-active-Event, not-found, rate-limited, dependency-failure, timezone, and
+mobile states. Public fetches omit credentials, and generated service-worker
+output excludes `/api/` from navigation fallback and runtime caching. Browser
+fixtures, viewport changes, tabs, and the temporary verifier were cleaned up.
+Physical-keyboard tab order and 200-percent browser zoom remain explicit
+release-QA checks because the in-app harness could not inject them. All
+Purchase behavior remains pending.
 
-The API provides `/health`, PostgreSQL-backed `/ready`, graceful shutdown, and
-the bounded guest Event/Offering catalogue. It has no Purchase or Operations
-business command capability yet.
+The API provides `/health`, PostgreSQL-backed `/ready`, graceful shutdown, the
+bounded guest Event/Offering catalogue, and transactional Operations
+Event/Offering commands. It has no Purchase command capability yet.
 
 ---
 
@@ -621,27 +624,32 @@ These rules must not be invented during implementation.
 
 ## Current Risks
 
-1. Public Event/Offering read routes exist, but Operations catalogue commands,
-   Purchase flows, and all privileged business handlers remain endpoint-free.
-2. Storefront query keys, stale-time policy, UI states, and route data remain
-   W2-07 work; the current frontend diagnostic is not a catalogue screen.
-3. The public limiter is intentionally per process. Ingress/CDN enforcement is
+1. Event/Offering APIs and both owning frontend flows exist, but all Purchase
+   flows remain unimplemented.
+2. The public limiter is intentionally per process. Ingress/CDN enforcement is
    still required for a uniform multi-replica rate limit and key-filling abuse.
-4. Migration/repository verification used only an explicitly disposable local
+3. Migration/repository verification used only an explicitly disposable local
    PostgreSQL database; staging and production compatibility remain unproven.
-5. OIDC-backed Operations session foundations exist; operator provisioning and
-   business-route authorization remain deferred.
-6. The domain model has public-query proof but no Purchase or Operations
-   command vertical slice yet.
+4. OIDC-backed Operations sessions and Event/Offering permissions are enforced;
+   operator/role administration and a real configured provider test identity
+   remain deployment work.
+5. The domain model has public-query and Operations-command proof but no
+   Purchase vertical slice yet.
+6. Week 2 writes transactional outbox rows but has no background publisher,
+   retry, cleanup, or backlog monitoring yet.
+7. CSP, HSTS, frame protection, and uniform multi-replica rate limiting depend
+   on the eventual hosting/ingress configuration and are not proven by Vite.
+8. Full WCAG, cross-browser, load/soak, penetration, disaster-recovery, audit
+   retention/export, and staging/production verification remain outside Week 2.
 
 ---
 
 ## Recommended Next Task
 
-Implement W2-05 Operations Event/Offering commands on the established Gin
-route-group boundary. It must compose authorization, idempotency where the
-contract promises it, audit/outbox records, and version-aware repository
-updates in one transaction.
+Execute `.codex/plans/week-3/W3-01-implement-reusable-party-identity-records.md`
+next. Reusable Party identity is the dependency-ready foundation for explicit
+purchaser, payer, and intended Sohibul Qurban relationships before the canonical
+Common Purchase task.
 
 The recommended first slice remains:
 
@@ -662,16 +670,17 @@ Qurban Event
 
 ```text
 Repository bootstrap
+Week 2 Event and Offering discovery/administration
 ```
 
 ### In Progress
 
 ```text
-Product and architecture realignment
+First qurban vertical slice
 ```
 
 ### Not Started
 
 ```text
-First qurban vertical slice
+Common Purchase vertical slice
 ```

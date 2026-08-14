@@ -215,5 +215,5 @@ func (r Runner) Status(ctx context.Context) ([]Status, error) {
 }
 
 func DefaultRegistry() (*Registry, error) {
-    return NewRegistry(sampleEvent{})
+    return NewRegistry(localOperator{}, sampleEvent{})
 }

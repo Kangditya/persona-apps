@@ -88,6 +88,18 @@ func TestRepositoryPostgreSQL(t *testing.T) {
     insertReservation(t, ctx, db, parent, offeringA, partyID, prefix, 3, "RELEASED", 99)
     insertReservation(t, ctx, db, parent, offeringA, partyID, prefix, 4, "EXPIRED", 99)
 
+    operationsPage, err := repository.ListWithAvailability(ctx, parent.ID, ListInput{Limit: 3})
+    if err != nil {
+        t.Fatal(err)
+    }
+    if len(operationsPage.Offerings) != 3 || !equalInt64(operationsPage.Offerings[0].AvailableParticipantUnits, int64Pointer(3)) || !equalInt64(operationsPage.Offerings[1].AvailableParticipantUnits, int64Pointer(3)) || !equalInt64(operationsPage.Offerings[2].AvailableParticipantUnits, int64Pointer(3)) {
+        t.Fatalf("operations offering page = %#v", operationsPage)
+    }
+    operationsDraft, err := repository.GetWithAvailability(ctx, offeringC.ID)
+    if err != nil || operationsDraft.Offering.ID != offeringC.ID || !equalInt64(operationsDraft.AvailableParticipantUnits, int64Pointer(3)) {
+        t.Fatalf("operations draft offering = %#v, %v", operationsDraft, err)
+    }
+
     publicPage, err := repository.ListPublic(ctx, parent.ID, ListInput{Limit: 1})
     if err != nil {
         t.Fatal(err)

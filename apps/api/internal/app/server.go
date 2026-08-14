@@ -18,9 +18,9 @@ type readinessChecker interface {
     PingContext(context.Context) error
 }
 
-func NewServer(address string, database readinessChecker, logger *slog.Logger, public config.PublicConfig, operationsAuth *auth.Service) (*http.Server, error) {
+func NewServer(address string, database readinessChecker, logger *slog.Logger, public config.PublicConfig, operationsAuth *auth.Service, eventOperations *event.OperationsHandler, offeringOperations *offering.OperationsHandler) (*http.Server, error) {
     events, offerings := publicReaders(database)
-    router, err := newRouter(database, logger, public, operationsAuth, events, offerings)
+    router, err := newRouter(database, logger, public, operationsAuth, events, offerings, eventOperations, offeringOperations)
     if err != nil {
         return nil, err
     }

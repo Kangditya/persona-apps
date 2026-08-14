@@ -10,16 +10,20 @@ import (
 
     "github.com/Kangditya/persona-apps/apps/api/internal/event"
     "github.com/Kangditya/persona-apps/apps/api/internal/offering"
+    "github.com/Kangditya/persona-apps/apps/api/internal/platform/cors"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/httpx"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/ratelimit"
     "github.com/gin-gonic/gin"
 )
 
-func registerPublicRoutes(router *gin.Engine, events event.ActiveReader, offerings offering.PublicCatalogueReader, limiter *ratelimit.PublicLimiter, logger *slog.Logger) {
+func registerPublicRoutes(router *gin.Engine, events event.ActiveReader, offerings offering.PublicCatalogueReader, limiter *ratelimit.PublicLimiter, logger *slog.Logger, allowedOrigins map[string]struct{}) {
     public := router.Group(publicAPIPrefix)
-    public.Use(publicNoStore(), publicRateLimit(limiter))
+    public.Use(cors.Middleware(cors.Policy{Origins: allowedOrigins, Methods: []string{http.MethodGet}, Headers: []string{"X-Request-ID"}}), publicNoStore(), publicRateLimit(limiter))
     event.RegisterPublicRoutes(public, events, logger)
     offering.RegisterPublicRoutes(public, offerings, logger)
+    for _, path := range []string{"/events/active", "/events/:event_id/offerings", "/offerings/:offering_id"} {
+        public.OPTIONS(path, func(c *gin.Context) { c.Status(http.StatusNoContent) })
+    }
 }
 
 func publicNoStore() gin.HandlerFunc {

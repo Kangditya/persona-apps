@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
-function createApiProxy(target: string) {
+export function createApiProxy(target: string) {
   return {
     "/api": { target, changeOrigin: true },
     "/health": { target, changeOrigin: true },

@@ -7,11 +7,13 @@ describe("storefront API boundary", () => {
   it("uses the configured base URL and parses the API response", async () => {
     let url = "";
     let headers: Headers | undefined;
+    let credentials: RequestCredentials | undefined;
     const api = createStorefrontApi({
       baseUrl: "https://api.example.test/",
       fetch: async (input, init) => {
         url = String(input);
         headers = new Headers(init?.headers);
+        credentials = init?.credentials;
         return Response.json({ status: "ok" });
       },
     });
@@ -19,6 +21,7 @@ describe("storefront API boundary", () => {
     await expect(api.diagnostics.health()).resolves.toEqual({ status: "ok" });
     expect(url).toBe("https://api.example.test/health");
     expect(headers?.get("Authorization")).toBeNull();
+    expect(credentials).toBe("omit");
   });
 
   it("preserves canonical public API paths with a same-origin base URL", async () => {

@@ -15,9 +15,11 @@ export function StorefrontLayout() {
             <header className="border-b border-amber-200 bg-white">
                 <nav
                     aria-label="Storefront navigation"
-                    className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-4"
+                    className="mx-auto flex max-w-5xl flex-wrap items-center gap-4 px-6 py-4"
                 >
-                    <strong className="mr-auto">Qurban Storefront</strong>
+                    <strong className="w-full sm:mr-auto sm:w-auto">
+                        Qurban Storefront
+                    </strong>
                     {links.map(([to, label]) => (
                         <NavLink
                             key={to}

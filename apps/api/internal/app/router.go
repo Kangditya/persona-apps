@@ -20,7 +20,7 @@ const (
     operationsAPIPrefix = "/api/operations/v1"
 )
 
-func newRouter(database readinessChecker, logger *slog.Logger, public config.PublicConfig, operationsAuth *auth.Service, events event.ActiveReader, offerings offering.PublicCatalogueReader) (*gin.Engine, error) {
+func newRouter(database readinessChecker, logger *slog.Logger, public config.PublicConfig, operationsAuth *auth.Service, events event.ActiveReader, offerings offering.PublicCatalogueReader, eventOperations *event.OperationsHandler, offeringOperations *offering.OperationsHandler) (*gin.Engine, error) {
     router := gin.New()
     router.RedirectTrailingSlash = false
     router.RedirectFixedPath = false
@@ -46,11 +46,11 @@ func newRouter(database readinessChecker, logger *slog.Logger, public config.Pub
     if err != nil {
         return nil, fmt.Errorf("create public rate limiter: %w", err)
     }
-    router.Use(httpx.RequestIDMiddleware(logger), httpx.RecoveryMiddleware(logger))
+    router.Use(httpx.RequestIDMiddleware(logger), httpx.RecoveryMiddleware(logger), operationsNoStore())
 
     registerHealthRoutes(router, database, logger)
-    registerPublicRoutes(router, events, offerings, limiter, logger)
-    registerOperationsRoutes(router, operationsAuth)
+    registerPublicRoutes(router, events, offerings, limiter, logger, public.StorefrontAllowedOrigins)
+    registerOperationsRoutes(router, operationsAuth, eventOperations, offeringOperations)
 
     return router, nil
 }

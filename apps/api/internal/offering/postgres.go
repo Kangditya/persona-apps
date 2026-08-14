@@ -148,6 +148,60 @@ func (repository *Repository) List(ctx context.Context, eventID string, input Li
     return result, nil
 }
 
+func (repository *Repository) ListWithAvailability(ctx context.Context, eventID string, input ListInput) (CatalogueResult, error) {
+    limit, cursor, err := normalizeListInput(input)
+    if err != nil {
+        return CatalogueResult{}, err
+    }
+    query := operationsListQuery
+    arguments := []any{eventID, limit + 1}
+    if cursor != nil {
+        query = operationsListAfterCursorQuery
+        arguments = []any{eventID, cursor.Code, cursor.ID, limit + 1}
+    }
+    rows, err := repository.db.QueryContext(ctx, query, arguments...)
+    if err != nil {
+        if cursor != nil && isInvalidCursorQuery(err) {
+            return CatalogueResult{}, ErrInvalidCursor
+        }
+        return CatalogueResult{}, fmt.Errorf("list offerings with availability: %w", err)
+    }
+    defer rows.Close()
+
+    result := CatalogueResult{Offerings: make([]CatalogueOffering, 0, limit), Limit: limit}
+    for rows.Next() {
+        value, scanErr := scanCatalogueOffering(rows)
+        if scanErr != nil {
+            return CatalogueResult{}, fmt.Errorf("scan offering availability row: %w", scanErr)
+        }
+        result.Offerings = append(result.Offerings, value)
+    }
+    if err := rows.Err(); err != nil {
+        return CatalogueResult{}, fmt.Errorf("iterate offering availability rows: %w", err)
+    }
+    if len(result.Offerings) > limit {
+        last := result.Offerings[limit-1].Offering
+        next, encodeErr := encodeCursor(offeringCursor{Version: 1, Code: last.Code, ID: last.ID})
+        if encodeErr != nil {
+            return CatalogueResult{}, encodeErr
+        }
+        result.Offerings = result.Offerings[:limit]
+        result.NextCursor = next
+    }
+    return result, nil
+}
+
+func (repository *Repository) GetWithAvailability(ctx context.Context, id string) (CatalogueOffering, error) {
+    value, err := scanCatalogueOffering(repository.db.QueryRowContext(ctx, operationsDetailQuery, id))
+    if errors.Is(err, sql.ErrNoRows) {
+        return CatalogueOffering{}, ErrNotFound
+    }
+    if err != nil {
+        return CatalogueOffering{}, fmt.Errorf("get offering with availability: %w", err)
+    }
+    return value, nil
+}
+
 func (repository *Repository) Save(ctx context.Context, value Offering, expectedVersion int64) (Offering, error) {
     saved, err := scanOffering(repository.db.QueryRowContext(ctx, `UPDATE offerings SET name = $1, description = $2, price_minor = $3, participant_quota = $4, status = $5, published_at = $6, version = version + 1, updated_at = now() WHERE id = $7 AND version = $8 RETURNING `+offeringColumns, value.Name, value.Description, value.PriceMinor, value.ParticipantQuota, value.Status, value.PublishedAt, value.ID, expectedVersion))
     if errors.Is(err, sql.ErrNoRows) {
@@ -500,3 +554,88 @@ const catalogueDetailQuery = `SELECT ` + catalogueOfferingColumns + `,
 FROM offerings
 JOIN qurban_events AS event ON event.id = offerings.event_id AND event.status = 'ACTIVE'
 WHERE offerings.id = $1 AND offerings.status = 'PUBLISHED'`
+
+const operationsListQuery = `WITH event_usage AS (
+    SELECT
+        COALESCE(SUM(participant_units) FILTER (WHERE status = 'RESERVED'), 0)::bigint AS reserved_units,
+        COALESCE(SUM(participant_units) FILTER (WHERE status = 'CONSUMED'), 0)::bigint AS consumed_units
+    FROM quota_reservations
+    WHERE event_id = $1 AND status IN ('RESERVED', 'CONSUMED')
+), offering_usage AS (
+    SELECT
+        offering_id,
+        COALESCE(SUM(participant_units) FILTER (WHERE status = 'RESERVED'), 0)::bigint AS reserved_units,
+        COALESCE(SUM(participant_units) FILTER (WHERE status = 'CONSUMED'), 0)::bigint AS consumed_units
+    FROM quota_reservations
+    WHERE event_id = $1 AND status IN ('RESERVED', 'CONSUMED')
+    GROUP BY offering_id
+)
+SELECT ` + catalogueOfferingColumns + `,
+    event.participant_quota,
+    event_usage.reserved_units,
+    event_usage.consumed_units,
+    COALESCE(offering_usage.reserved_units, 0)::bigint,
+    COALESCE(offering_usage.consumed_units, 0)::bigint
+FROM offerings
+JOIN qurban_events AS event ON event.id = offerings.event_id
+CROSS JOIN event_usage
+LEFT JOIN offering_usage ON offering_usage.offering_id = offerings.id
+WHERE offerings.event_id = $1
+ORDER BY offerings.code ASC, offerings.id ASC
+LIMIT $2`
+
+const operationsListAfterCursorQuery = `WITH event_usage AS (
+    SELECT
+        COALESCE(SUM(participant_units) FILTER (WHERE status = 'RESERVED'), 0)::bigint AS reserved_units,
+        COALESCE(SUM(participant_units) FILTER (WHERE status = 'CONSUMED'), 0)::bigint AS consumed_units
+    FROM quota_reservations
+    WHERE event_id = $1 AND status IN ('RESERVED', 'CONSUMED')
+), offering_usage AS (
+    SELECT
+        offering_id,
+        COALESCE(SUM(participant_units) FILTER (WHERE status = 'RESERVED'), 0)::bigint AS reserved_units,
+        COALESCE(SUM(participant_units) FILTER (WHERE status = 'CONSUMED'), 0)::bigint AS consumed_units
+    FROM quota_reservations
+    WHERE event_id = $1 AND status IN ('RESERVED', 'CONSUMED')
+    GROUP BY offering_id
+)
+SELECT ` + catalogueOfferingColumns + `,
+    event.participant_quota,
+    event_usage.reserved_units,
+    event_usage.consumed_units,
+    COALESCE(offering_usage.reserved_units, 0)::bigint,
+    COALESCE(offering_usage.consumed_units, 0)::bigint
+FROM offerings
+JOIN qurban_events AS event ON event.id = offerings.event_id
+CROSS JOIN event_usage
+LEFT JOIN offering_usage ON offering_usage.offering_id = offerings.id
+WHERE offerings.event_id = $1
+    AND (offerings.code > $2 OR (offerings.code = $2 AND offerings.id > $3))
+ORDER BY offerings.code ASC, offerings.id ASC
+LIMIT $4`
+
+const operationsDetailQuery = `SELECT ` + catalogueOfferingColumns + `,
+    event.participant_quota,
+    COALESCE((
+        SELECT SUM(participant_units) FILTER (WHERE status = 'RESERVED')
+        FROM quota_reservations
+        WHERE event_id = offerings.event_id AND status IN ('RESERVED', 'CONSUMED')
+    ), 0)::bigint,
+    COALESCE((
+        SELECT SUM(participant_units) FILTER (WHERE status = 'CONSUMED')
+        FROM quota_reservations
+        WHERE event_id = offerings.event_id AND status IN ('RESERVED', 'CONSUMED')
+    ), 0)::bigint,
+    COALESCE((
+        SELECT SUM(participant_units) FILTER (WHERE status = 'RESERVED')
+        FROM quota_reservations
+        WHERE offering_id = offerings.id AND status IN ('RESERVED', 'CONSUMED')
+    ), 0)::bigint,
+    COALESCE((
+        SELECT SUM(participant_units) FILTER (WHERE status = 'CONSUMED')
+        FROM quota_reservations
+        WHERE offering_id = offerings.id AND status IN ('RESERVED', 'CONSUMED')
+    ), 0)::bigint
+FROM offerings
+JOIN qurban_events AS event ON event.id = offerings.event_id
+WHERE offerings.id = $1`

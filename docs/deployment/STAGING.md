@@ -17,6 +17,9 @@ The long-running API requires:
   `OIDC_REDIRECT_URL`, and `OIDC_PERMISSION_CLAIM`;
 - `OPERATIONS_WEB_ORIGIN` and comma-separated
   `OPERATIONS_ALLOWED_ORIGINS` containing only exact HTTPS origins;
+- optional comma-separated `STOREFRONT_ALLOWED_ORIGINS` containing only exact
+  HTTPS origins when Storefront and API are deployed cross-origin; leave empty
+  for the preferred same-origin deployment;
 - `AUTH_COOKIE_ENCRYPTION_KEY` as base64-encoded 32 bytes;
 - `IDEMPOTENCY_RESPONSE_KEYS` as an ordered
   `key-id:base64-32-byte-key` ring;

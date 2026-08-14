@@ -11,6 +11,13 @@ export function createApiProxy(target: string) {
   };
 }
 
+export const storefrontWorkbox = {
+  cleanupOutdatedCaches: true,
+  globPatterns: ["**/*.{js,css,html}"],
+  navigateFallback: "index.html",
+  navigateFallbackDenylist: [/^\/api\//],
+};
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -47,12 +54,7 @@ export default defineConfig(({ mode }) => {
             },
           ],
         },
-        workbox: {
-          cleanupOutdatedCaches: true,
-          globPatterns: ["**/*.{js,css,html}"],
-          navigateFallback: "index.html",
-          navigateFallbackDenylist: [/^\/api\//],
-        },
+        workbox: storefrontWorkbox,
         devOptions: { enabled: false },
       }),
     ],

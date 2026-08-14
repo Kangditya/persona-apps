@@ -61,6 +61,7 @@ func TestLoadAPIUsesSafePublicDefaults(t *testing.T) {
     t.Setenv("PUBLIC_RATE_LIMIT_PER_MINUTE", "")
     t.Setenv("PUBLIC_RATE_LIMIT_BURST", "")
     t.Setenv("TRUSTED_PROXY_CIDRS", "")
+    t.Setenv("STOREFRONT_ALLOWED_ORIGINS", "")
 
     configuration, err := LoadAPI()
     if err != nil {
@@ -71,6 +72,9 @@ func TestLoadAPIUsesSafePublicDefaults(t *testing.T) {
     }
     if configuration.Public.TrustedProxyCIDRs != nil {
         t.Fatalf("trusted proxies = %#v, want disabled", configuration.Public.TrustedProxyCIDRs)
+    }
+    if len(configuration.Public.StorefrontAllowedOrigins) != 0 {
+        t.Fatalf("storefront origins = %#v, want disabled", configuration.Public.StorefrontAllowedOrigins)
     }
 }
 
@@ -85,6 +89,9 @@ func TestLoadAPIValidatesPublicNetworkConfiguration(t *testing.T) {
         {name: "raw address is not CIDR", name2: "TRUSTED_PROXY_CIDRS", value: "192.0.2.1"},
         {name: "global CIDR is forbidden", name2: "TRUSTED_PROXY_CIDRS", value: "0.0.0.0/0"},
         {name: "host bits must be zero", name2: "TRUSTED_PROXY_CIDRS", value: "192.0.2.1/24"},
+        {name: "origin path is forbidden", name2: "STOREFRONT_ALLOWED_ORIGINS", value: "http://localhost:5173/"},
+        {name: "origin wildcard is forbidden", name2: "STOREFRONT_ALLOWED_ORIGINS", value: "http://*.example.test"},
+        {name: "origin scheme is forbidden", name2: "STOREFRONT_ALLOWED_ORIGINS", value: "ftp://example.test"},
     }
     for _, test := range tests {
         t.Run(test.name, func(t *testing.T) {
@@ -93,12 +100,28 @@ func TestLoadAPIValidatesPublicNetworkConfiguration(t *testing.T) {
             t.Setenv("PUBLIC_RATE_LIMIT_PER_MINUTE", "")
             t.Setenv("PUBLIC_RATE_LIMIT_BURST", "")
             t.Setenv("TRUSTED_PROXY_CIDRS", "")
+            t.Setenv("STOREFRONT_ALLOWED_ORIGINS", "")
             t.Setenv(test.name2, test.value)
 
             if _, err := LoadAPI(); err == nil {
                 t.Fatal("LoadAPI accepted unsafe public configuration")
             }
         })
+    }
+}
+
+func TestLoadAPINormalizesStorefrontOrigins(t *testing.T) {
+    t.Setenv("DATABASE_URL", "postgres://example.invalid/db")
+    t.Setenv("APP_ENV", "development")
+    t.Setenv("STOREFRONT_ALLOWED_ORIGINS", "http://localhost:5173, http://localhost:5174, http://localhost:5173")
+
+    configuration, err := LoadAPI()
+    if err != nil {
+        t.Fatal(err)
+    }
+    want := map[string]struct{}{"http://localhost:5173": {}, "http://localhost:5174": {}}
+    if !reflect.DeepEqual(configuration.Public.StorefrontAllowedOrigins, want) {
+        t.Fatalf("storefront origins = %#v, want %#v", configuration.Public.StorefrontAllowedOrigins, want)
     }
 }
 

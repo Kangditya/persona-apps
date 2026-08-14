@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: install dev dev-web dev-storefront dev-operations dev-api infra-up infra-down \
+.PHONY: install dev dev-web dev-storefront dev-operations dev-api dev-oidc infra-up infra-down \
 	build lint typecheck test format format-check compose-check validate \
 	db-validate db-status db-version db-migrate db-migrate-steps db-rollback \
 	db-rollback-steps db-migration-create db-seed-list db-seed-status db-seed \
@@ -20,6 +20,8 @@ infra-down:
 	docker compose -f infrastructure/compose.yaml down
 
 dev:
+	$(MAKE) db-setup db-seed-development
+	$(MAKE) dev-oidc-ready
 	$(MAKE) -j3 dev-storefront dev-operations dev-api
 
 dev-web:
@@ -45,6 +47,19 @@ dev-api:
 		printf 'API port %s is occupied; using %s instead.\n' "$$requested_port" "$$address"; \
 	fi; \
 	cd apps/api && HTTP_ADDRESS="$$address" air
+
+dev-oidc:
+	cd apps/api && go run ./cmd/local-oidc
+
+dev-oidc-ready:
+	@if ! curl -fsS http://localhost:7071/.well-known/openid-configuration >/dev/null 2>&1; then \
+		(setsid sh -c 'cd apps/api && exec go run ./cmd/local-oidc' >/tmp/persona-local-oidc.log 2>&1 &) ; \
+	fi; \
+	for attempt in $$(seq 1 30); do \
+		if curl -fsS http://localhost:7071/.well-known/openid-configuration >/dev/null 2>&1; then exit 0; fi; \
+		sleep 1; \
+	done; \
+	printf 'local OIDC issuer did not become ready on port 7071\n' >&2; exit 1
 
 build:
 	pnpm build

@@ -9,6 +9,8 @@ type OperationsApiOptions = {
   fetch?: typeof fetch;
 };
 
+export type OperationsApi = ReturnType<typeof createOperationsApi>;
+
 export function createOperationsApi({
   baseUrl,
   provider = "api",
@@ -17,6 +19,8 @@ export function createOperationsApi({
   const client = createApiClient({ baseUrl, fetch });
 
   return {
+    request: <T>(path: string, request: ApiRequest = {}): Promise<T> =>
+      client.request<T>(path, { ...request, credentials: "include" }),
     diagnostics: {
       health: (request?: ApiRequest): Promise<ApiHealth> =>
         provider === "development"
