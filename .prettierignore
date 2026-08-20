@@ -1,6 +1,7 @@
 .codex/
 apps/api/
 node_modules/
+.next/
 dist/
 coverage/
 .turbo/

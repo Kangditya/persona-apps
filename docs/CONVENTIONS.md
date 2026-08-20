@@ -301,8 +301,9 @@ RECOMMENDED:
 
 ### 5.1 Application structure and naming
 
-The current applications use app, api, layouts, pages, pwa, routes, styles,
-and main entrypoint folders. This baseline is valid for the current shells.
+The current applications use App Router entries plus application-owned api,
+layouts, pages, pwa, routes, and styles folders. Existing page modules may stay
+in place behind thin route entries while the migration remains client-rendered.
 
 EMERGING:
 
@@ -318,10 +319,14 @@ REQUIRED:
 
 - Keep public and Operations application ownership explicit. A Storefront page
   must not expose Operations-only fields or use an Operations contract.
-- Keep routes centralized in src/routes/paths.ts and src/routes/routes.tsx.
-  Use the path registry rather than scattering route strings through pages.
-  A future Operations route guard improves navigation only; backend
-  authorization remains the security boundary.
+- Keep URL constants and dynamic URL builders centralized in
+  `src/routes/paths.ts`. Next.js `src/app/**/page.tsx` files register routes;
+  do not add a parallel route table. An Operations navigation guard improves
+  navigation only; backend authorization remains the security boundary.
+- Keep App Router route files thin. Existing interactive pages, TanStack Query,
+  forms, browser APIs, and session flows use focused Client Component
+  boundaries; do not move business API reads or commands into Next.js Route
+  Handlers, Server Actions, or middleware.
 - Keep domain/business rules out of route definitions and UI callbacks.
 
 ### 5.2 API access and server state
@@ -367,9 +372,10 @@ REQUIRED:
 - Server configuration is loaded and validated through the Go config package.
   Production-like environments fail closed when required OIDC and replay-key
   configuration is missing.
-- Browser configuration uses only VITE-prefixed build-time values. Those values
-  are public by design; never put secrets, private keys, database URLs,
-  Operations session material, or Purchase tokens in them.
+- Browser configuration uses only `NEXT_PUBLIC_*` build-time values. Those
+  values are public by design; never put secrets, private keys, database URLs,
+  private API origins, Operations session material, or Purchase tokens in
+  them. The optional local `API_PROXY_TARGET` is server-only.
 - Keep .env untracked and use .env.example for names and safe local examples
   only. Never place real credentials, raw sessions, CSRF values, Purchase
   tokens, payment evidence, participant data, or production exports in source,
@@ -459,7 +465,7 @@ Current generation state:
 
 | Artifact                          | Rule                                                                                                                                      |
 | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Vite/PWA build output             | Generated into ignored dist output; never edit or commit it.                                                                              |
+| Next.js/PWA build output          | Generated into ignored `.next` output; never edit or commit it.                                                                           |
 | Shared UI component configuration | packages/ui/components.json may guide shadcn-style additions; emitted source is editable and must receive a root export and focused test. |
 | OpenAPI clients                   | No generated client is committed and no generation command exists. Do not introduce one without an approved workflow.                     |
 

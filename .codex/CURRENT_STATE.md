@@ -97,12 +97,13 @@ apps/
 
 Current frontend stack:
 
-- Vite;
+- Next.js 16.3.1 App Router;
 - React;
 - TypeScript;
-- React Router with documented Remix-style routing conventions;
-- TanStack Query as the approved future remote API/server-state library;
-- Tailwind CSS;
+- filesystem route registration with centralized `src/routes/paths.ts` URL
+  builders;
+- TanStack Query for remote API/server state;
+- Tailwind CSS 4 through PostCSS;
 - Oxlint;
 - Vitest.
 
@@ -115,14 +116,14 @@ published-Offering list/detail, safe public states, exact minor-unit price, and
 advisory availability flows against the W2-04 API.
 
 Both applications also consume `@persona-apps/ui`, which owns shared semantic
-tokens and accessible atoms/molecules, and have independent production PWA
-manifests and shell-only service workers. API and sensitive data remain
-network-only.
+tokens and accessible atoms/molecules, and have independent typed App Router
+PWA manifests and generated shell-only service workers. API, authentication,
+HTML, and sensitive business data remain network-only.
 
 Local development behavior:
 
-- Storefront Vite server with HMR on `127.0.0.1:5173`;
-- Operations Vite server with HMR on `127.0.0.1:5174`;
+- Storefront Next.js development server on `127.0.0.1:5173`;
+- Operations Next.js development server on `127.0.0.1:5174`;
 - Go API live reload through Air using `apps/api/.air.toml`;
 - API default address `127.0.0.1:8080`.
 
@@ -231,7 +232,8 @@ Implemented as contracts, placeholders, or shells:
 - frontend TypeScript configuration;
 - API client package shell;
 - shared UI package with tokens and accessible primitives;
-- application-owned PWA manifests and service-worker configuration.
+- application-owned typed PWA manifests, checked-in worker policies, and
+  production worker generation into ignored `.next` output.
 
 The separate public and operations OpenAPI contracts define Phase 1 request,
 response, permission, request-ID, CSRF, idempotency, and error behavior. Public
@@ -277,9 +279,10 @@ Implemented or revised:
 - database ERD, migration plan, operations guide, and design review;
 - command-scoped idempotency ownership and development guidance.
 
-The architecture artifacts document React Router with Remix-style routing
-conventions and TanStack Query server-state ownership. The approved UI/API
-foundation is now runtime code; qurban business capabilities remain deferred.
+The architecture artifacts document Next.js App Router filesystem ownership,
+central URL builders, client-rendered TanStack Query server-state ownership,
+and the Go API as the only business backend. The approved UI/API foundation is
+runtime code; later qurban business capabilities remain deferred.
 
 ---
 
@@ -495,22 +498,22 @@ The following previous assumptions are no longer accepted product direction:
 
 Current replacements:
 
-| Previous Assumption | Current Direction |
-|---|---|
-| Product catalogue | Qurban Offering Catalogue |
-| Inventory | Livestock lifecycle |
-| Customer | Explicit party and participant roles |
-| Order | Canonical Purchase |
-| POS operations | Qurban Event Operations |
-| Fulfillment | Allocation, Slaughter, and Distribution |
-| SaaS multitenancy | One operating organization initially |
-| Mandatory cart | Direct checkout unless multi-offering checkout is confirmed |
+| Previous Assumption | Current Direction                                           |
+| ------------------- | ----------------------------------------------------------- |
+| Product catalogue   | Qurban Offering Catalogue                                   |
+| Inventory           | Livestock lifecycle                                         |
+| Customer            | Explicit party and participant roles                        |
+| Order               | Canonical Purchase                                          |
+| POS operations      | Qurban Event Operations                                     |
+| Fulfillment         | Allocation, Slaughter, and Distribution                     |
+| SaaS multitenancy   | One operating organization initially                        |
+| Mandatory cart      | Direct checkout unless multi-offering checkout is confirmed |
 
 ---
 
 ## Current Verification State
 
-Last recorded implementation verification: **2026-08-14**
+Last recorded implementation verification: **2026-08-20**
 
 The product/architecture and frontend-artifact alignment has been verified
 with:
@@ -535,21 +538,38 @@ are now pinned to fixed Go 1.26.6. The 1.26.6 rescan reports zero reachable or
 imported-package vulnerabilities. The sole module-only result is the uncalled,
 unimported, upstream-unfixed `golang.org/x/crypto/openpgp` advisory.
 
-Frontend type checking, focused tests, linting, builds, PWA manifest output,
-and service-worker precache policy are verified. Operations Event/Offering
-screens were exercised in a real browser against the real local API and
-PostgreSQL, including OIDC session bootstrap, create/edit/lifecycle commands,
-stale-version recovery, rotated-CSRF recovery, logout, direct route loading,
-and a 360-pixel layout. The temporary local OIDC verifier used only disposable
-test identity data and was not shipped. Storefront Event/Offering screens were
-also exercised against the real local API and PostgreSQL for populated, empty,
-no-active-Event, not-found, rate-limited, dependency-failure, timezone, and
-mobile states. Public fetches omit credentials, and generated service-worker
-output excludes `/api/` from navigation fallback and runtime caching. Browser
-fixtures, viewport changes, tabs, and the temporary verifier were cleaned up.
-Physical-keyboard tab order and 200-percent browser zoom remain explicit
-release-QA checks because the in-app harness could not inject them. All
-Purchase behavior remains pending.
+The Next.js migration passes both applications' focused Vitest suites,
+TypeScript checks, Oxlint, production builds, route generation, production
+starts, direct static and dynamic HTTP loads, distinct manifest output,
+generated-worker output, root-scope worker headers, and deterministic cache
+policy tests. The generated policies precache only immutable `/_next/static/*`
+assets, icons, and a data-free fallback; `/api`, authentication callbacks,
+probes, cross-origin requests, and non-GET requests are network-only.
+
+The production Next.js proxy was exercised against the real local Go API,
+PostgreSQL, and local OIDC issuer. The check completed OIDC and session
+bootstrap, Event/Offering create and edit, idempotency replay and conflict,
+stale-version rejection, lifecycle commands, rotated-CSRF rejection and
+recovery, minimized public projection, and logout. The fixture ended archived
+in the local development database, and temporary cookie/CSRF artifacts were
+securely deleted.
+
+Repository-wide validation was rerun for this migration but is not currently
+green. `make validate` stops at pre-existing formatter drift in four untouched
+Go files, and `go test ./...` fails because
+`TestSessionReturnsExpiryAndSortedPermissionsWithoutCaching` hard-codes an
+expiry of 2026-08-15, which is now in the past. `go vet ./...`,
+`go build ./...`, Compose configuration, the API container build, frozen-lockfile
+installation, and all root frontend lint, typecheck, test, and build checks pass.
+
+Interactive browser verification has not been rerun after the Next.js
+migration because the configured browser-control runtime was unavailable in
+this workspace. Prior Vite browser evidence is not treated as Next.js parity
+evidence. Hydrated client navigation, visual/narrow-layout parity, actual
+service-worker registration and offline/update prompts, physical-keyboard tab
+order, 200-percent zoom, and cross-browser behavior remain explicit
+verification gaps. The migration task therefore remains active and is not
+archived. All Purchase behavior remains pending.
 
 The API provides `/health`, PostgreSQL-backed `/ready`, graceful shutdown, the
 bounded guest Event/Offering catalogue, and transactional Operations
@@ -637,8 +657,9 @@ These rules must not be invented during implementation.
    Purchase vertical slice yet.
 6. Week 2 writes transactional outbox rows but has no background publisher,
    retry, cleanup, or backlog monitoring yet.
-7. CSP, HSTS, frame protection, and uniform multi-replica rate limiting depend
-   on the eventual hosting/ingress configuration and are not proven by Vite.
+7. CSP, HSTS, frame protection, same-origin API routing, and uniform
+   multi-replica rate limiting depend on the eventual Next.js hosting/ingress
+   configuration and are not proven in a deployed environment.
 8. Full WCAG, cross-browser, load/soak, penetration, disaster-recovery, audit
    retention/export, and staging/production verification remain outside Week 2.
 
@@ -646,10 +667,12 @@ These rules must not be invented during implementation.
 
 ## Recommended Next Task
 
-Execute `.codex/plans/week-3/W3-01-implement-reusable-party-identity-records.md`
-next. Reusable Party identity is the dependency-ready foundation for explicit
-purchaser, payer, and intended Sohibul Qurban relationships before the canonical
-Common Purchase task.
+Complete the outstanding interactive Next.js browser/PWA verification first.
+After migration acceptance is fully proven and the active task is archived,
+execute `.codex/plans/week-3/W3-01-implement-reusable-party-identity-records.md`.
+Reusable Party identity is the dependency-ready foundation for explicit
+purchaser, payer, and intended Sohibul Qurban relationships before the
+canonical Common Purchase task.
 
 The recommended first slice remains:
 

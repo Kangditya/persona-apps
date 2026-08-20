@@ -1,7 +1,11 @@
-import { NavLink, Outlet } from "react-router";
+"use client";
 
-import { paths } from "../routes/paths";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
+
 import { StorefrontPwaStatus } from "../pwa/StorefrontPwaStatus";
+import { isActivePath, paths } from "../routes/paths";
 
 const links = [
     [paths.home, "Event Home"],
@@ -9,7 +13,9 @@ const links = [
     [paths.purchaseTracking, "Purchase Tracking"],
 ] as const;
 
-export function StorefrontLayout() {
+export function StorefrontLayout({ children }: { children: ReactNode }) {
+    const pathname = usePathname() ?? "";
+
     return (
         <div className="min-h-screen bg-amber-50 text-stone-900">
             <header className="border-b border-amber-200 bg-white">
@@ -21,24 +27,22 @@ export function StorefrontLayout() {
                         Qurban Storefront
                     </strong>
                     {links.map(([to, label]) => (
-                        <NavLink
+                        <Link
                             key={to}
-                            to={to}
-                            className={({ isActive }) =>
-                                isActive
+                            href={to}
+                            className={
+                                isActivePath(pathname, to)
                                     ? "text-amber-700"
                                     : "text-stone-600 hover:text-stone-950"
                             }
                         >
                             {label}
-                        </NavLink>
+                        </Link>
                     ))}
                 </nav>
             </header>
             <StorefrontPwaStatus />
-            <main className="mx-auto max-w-5xl px-6 py-16">
-                <Outlet />
-            </main>
+            <main className="mx-auto max-w-5xl px-6 py-16">{children}</main>
         </div>
     );
 }

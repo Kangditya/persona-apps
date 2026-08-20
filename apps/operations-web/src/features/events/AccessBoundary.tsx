@@ -1,7 +1,9 @@
+"use client";
+
 import { ApiError } from "@persona-apps/api-client";
 import { Alert, Button, Skeleton } from "@persona-apps/ui";
-import type { ReactNode } from "react";
-import { useLocation } from "react-router";
+import { usePathname } from "next/navigation";
+import { type ReactNode, useEffect, useState } from "react";
 
 import type { OperationsSession } from "../../api/session";
 import { operationsLoginHref } from "../../api/session";
@@ -13,8 +15,13 @@ type AccessBoundaryProps = {
 };
 
 export function AccessBoundary({ permission, children }: AccessBoundaryProps) {
-    const location = useLocation();
+    const pathname = usePathname() ?? "";
+    const [returnTo, setReturnTo] = useState(pathname);
     const session = useOperationsSession();
+
+    useEffect(() => {
+        setReturnTo(`${pathname}${window.location.search}`);
+    }, [pathname]);
 
     if (session.isPending) {
         return (
@@ -31,7 +38,6 @@ export function AccessBoundary({ permission, children }: AccessBoundaryProps) {
         session.error instanceof ApiError &&
         session.error.kind === "unauthorized"
     ) {
-        const returnTo = `${location.pathname}${location.search}`;
         return (
             <section>
                 <h1 className="text-3xl font-semibold" tabIndex={-1} autoFocus>

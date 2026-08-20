@@ -31,9 +31,11 @@ export function createOperationsApi({
 }
 
 const provider: ApiProvider =
-  import.meta.env.VITE_API_PROVIDER === "development" ? "development" : "api";
+  process.env.NEXT_PUBLIC_API_PROVIDER === "development"
+    ? "development"
+    : "api";
 
 export const operationsApi = createOperationsApi({
-  baseUrl: import.meta.env.VITE_API_BASE_URL || "",
+  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "",
   provider,
 });

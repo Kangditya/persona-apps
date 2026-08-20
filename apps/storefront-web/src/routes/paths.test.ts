@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { offeringPath, paths, routePatterns } from "./paths";
+import { isActivePath, offeringPath, paths } from "./paths";
 
 describe("storefront paths", () => {
   it("keeps the storefront routes centralized", () => {
@@ -9,7 +9,13 @@ describe("storefront paths", () => {
       "/offerings",
       "/purchase-tracking",
     ]);
-    expect(routePatterns.offering).toBe("/offerings/:offeringId");
     expect(offeringPath("offering/id")).toBe("/offerings/offering%2Fid");
+  });
+
+  it("marks exact routes and their dynamic children active", () => {
+    expect(isActivePath("/", paths.home)).toBe(true);
+    expect(isActivePath("/offerings/example", paths.offerings)).toBe(true);
+    expect(isActivePath("/offerings", paths.home)).toBe(false);
+    expect(isActivePath("/purchase-tracking", paths.offerings)).toBe(false);
   });
 });

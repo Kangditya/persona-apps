@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { eventPath, offeringPath, paths, routePatterns } from "./paths";
+import { eventPath, isActivePath, offeringPath, paths } from "./paths";
 
 describe("operations paths", () => {
   it("keeps the qurban placeholder routes centralized", () => {
@@ -14,13 +14,15 @@ describe("operations paths", () => {
   });
 
   it("builds Event and Offering detail paths safely", () => {
-    expect(routePatterns.event).toBe("/events/:eventId");
-    expect(routePatterns.offering).toBe(
-      "/events/:eventId/offerings/:offeringId",
-    );
     expect(eventPath("event/id")).toBe("/events/event%2Fid");
     expect(offeringPath("event/id", "offering id")).toBe(
       "/events/event%2Fid/offerings/offering%20id",
     );
+  });
+
+  it("marks exact routes and their dynamic children active", () => {
+    expect(isActivePath("/events", paths.events)).toBe(true);
+    expect(isActivePath("/events/event-id", paths.events)).toBe(true);
+    expect(isActivePath("/event-dashboard", paths.events)).toBe(false);
   });
 });

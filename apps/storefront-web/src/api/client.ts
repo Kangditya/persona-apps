@@ -34,9 +34,11 @@ export function createStorefrontApi({
 export type StorefrontApi = ReturnType<typeof createStorefrontApi>;
 
 const provider: ApiProvider =
-  import.meta.env.VITE_API_PROVIDER === "development" ? "development" : "api";
+  process.env.NEXT_PUBLIC_API_PROVIDER === "development"
+    ? "development"
+    : "api";
 
 export const storefrontApi = createStorefrontApi({
-  baseUrl: import.meta.env.VITE_API_BASE_URL || "",
+  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "",
   provider,
 });

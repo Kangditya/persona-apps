@@ -4,13 +4,15 @@ Initial monorepo bootstrap for a Qurban Commerce and Operations Platform.
 
 ## Current status
 
-This repository contains React application shells, shared workspace tooling, a Go modular-monolith API shell, PostgreSQL infrastructure, placeholder OpenAPI contracts, and canonical product and architecture documentation.
+This repository contains two Next.js React applications, shared workspace
+tooling, a Go modular-monolith API, PostgreSQL infrastructure, separate OpenAPI
+contracts, and canonical product and architecture documentation.
 
-The documented frontend direction is React Router with Remix-style routing
-conventions and TanStack Query for remote API/server state. Both Vite apps now
-include a typed transport boundary and an API-availability diagnostic. The Go
-API serves the guest Event/Offering catalogue, while its Storefront screens and
-all product mutations remain deferred.
+Both web applications use Next.js 16 App Router with TanStack Query for remote
+API/server state. They keep separate public and Operations API boundaries. The
+Go API serves guest Event/Offering discovery and authenticated Operations
+Event/Offering commands; Purchase and later product capabilities remain
+deferred.
 
 Event/Offering configuration, PostgreSQL persistence, and guest catalogue
 discovery are implemented. The following remain deferred:
@@ -20,7 +22,7 @@ discovery are implemented. The following remain deferred:
 - Party, Participant, and Sohibul Qurban activation;
 - Livestock and Allocation;
 - Slaughter and Distribution operations;
-- business authorization and authenticated product workflows;
+- authenticated product workflows beyond Event/Offering administration;
 - reporting projections and operational dashboards;
 - payment gateway integration;
 - production deployment.
@@ -137,7 +139,7 @@ pnpm dev
 
 URL: `http://127.0.0.1:5173`
 
-Vite provides lightweight static serving and browser live reload through HMR.
+Next.js provides the App Router development server and browser live reload.
 
 ### Operations Web
 
@@ -156,7 +158,7 @@ pnpm dev
 
 URL: `http://127.0.0.1:5174`
 
-Vite provides lightweight static serving and browser live reload through HMR.
+Next.js provides the App Router development server and browser live reload.
 
 ### Go API
 
@@ -200,11 +202,12 @@ Each application also has an independent production PWA configuration:
 
 Each manifest declares the app-owned `icon-192.svg` and `icon-512.svg` assets;
 the 512px icon is marked `maskable` and has safe centered artwork. The service
-workers precache build HTML, JavaScript, CSS, and these immutable SVG assets only.
+workers precache immutable Next.js JavaScript/CSS/font assets, the icons, and a
+data-free offline fallback. Successful HTML and API responses are not cached.
 API requests, authentication, participant, financial, operational, and
-mutation data have no runtime cache or replay path. Offline mode shows an
-unavailable notice; it never presents cached records as authoritative. Updates
-use a visible prompt and do not activate or reload automatically during work.
+mutation data have no cache or replay path. Offline mode shows an unavailable
+notice; it never presents cached records as authoritative. Updates use a
+visible prompt and do not activate or reload automatically during work.
 
 Service workers are disabled during development. Production builds emit each
 app's manifest, icon, and worker. Keep the applications on separate origins or
@@ -212,29 +215,29 @@ configure a distinct deployment base path before hosting them on one origin.
 
 ## Frontend API configuration
 
-Both applications read these Vite variables at build time:
+Browser-visible values use Next.js public variables; the proxy target remains
+server-only:
 
 ```text
-VITE_API_BASE_URL=
-VITE_API_PROXY_TARGET=http://127.0.0.1:8080
-VITE_API_PROVIDER=api
+NEXT_PUBLIC_API_BASE_URL=
+API_PROXY_TARGET=http://127.0.0.1:8081
+NEXT_PUBLIC_API_PROVIDER=api
 ```
 
-For local development, Vite proxies canonical `/api` paths unchanged and also
-proxies `/health` and `/ready` to `VITE_API_PROXY_TARGET`; the production value
-may instead be an absolute API origin with an appropriate CORS policy. `api`
-calls the existing Go API `GET /health` endpoint. Set
-`VITE_API_PROVIDER=development` to use a deterministic, non-authoritative
-diagnostic adapter without credentials or a running API. It returns only
+For local development, Next.js rewrites canonical `/api` paths unchanged and
+also rewrites `/health` and `/ready` to `API_PROXY_TARGET`. Deployed same-origin
+routing belongs to ingress or a reverse proxy, so omit that value when the
+Next.js runtime should not proxy locally. Set
+`NEXT_PUBLIC_API_PROVIDER=development` to use a deterministic,
+non-authoritative health diagnostic without a running API. It returns only
 `{ "status": "development" }`; it does not represent qurban product data.
 
 The Storefront and Operations endpoint modules remain application-owned.
 They share only `@persona-apps/api-client`, which owns request serialization,
-timeouts, cancellation, response parsing, and normalized errors. It exposes a
-`getHeaders` extension point for a future session provider. It does not yet
-wire an Operations browser session; endpoint-specific session handling must
-follow the authentication contract. No credentials are stored or logged by the
-generic client.
+timeouts, cancellation, response parsing, and normalized errors. Operations
+keeps its HttpOnly session browser-managed and its rotated CSRF value in
+TanStack Query memory. No credentials are stored or logged by the generic
+client.
 
 Future public endpoints belong in `apps/storefront-web/src/api`; operations
 endpoints belong in `apps/operations-web/src/api`, using their respective
@@ -244,8 +247,8 @@ only affected keys after a successful, contracted mutation.
 Health checks:
 
 ```bash
-curl http://127.0.0.1:8080/health
-curl http://127.0.0.1:8080/ready
+curl http://127.0.0.1:8081/health
+curl http://127.0.0.1:8081/ready
 ```
 
 `/ready` requires PostgreSQL to be running.
@@ -262,9 +265,27 @@ This starts three independent development processes:
 
 - Storefront Web on `127.0.0.1:5173`;
 - Operations Web on `127.0.0.1:5174`;
-- Go API with Air live reload on `127.0.0.1:8080`.
+- Go API with Air live reload on the `.env` HTTP address (`127.0.0.1:8081` in
+  the example).
 
 Use `Ctrl+C` to stop the development processes.
+
+## Production-mode web runtime
+
+Each web application builds and starts independently:
+
+```bash
+pnpm --filter @persona-apps/storefront-web build
+pnpm --filter @persona-apps/storefront-web start
+
+pnpm --filter @persona-apps/operations-web build
+pnpm --filter @persona-apps/operations-web start
+```
+
+The commands listen on ports 5173 and 5174 respectively. Production hosting
+must provide a supported Node.js runtime and same-origin ingress routing for
+`/api`, `/health`, and `/ready`; this repository does not provision a provider
+or frontend container.
 
 ## Validation
 

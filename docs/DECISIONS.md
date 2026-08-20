@@ -123,7 +123,7 @@ The two applications differ in:
 
 ## ADR-003: Use Vite and React
 
-**Status:** Accepted
+**Status:** Superseded by ADR-047
 
 Both frontend applications use:
 
@@ -157,17 +157,19 @@ Vite provides:
 
 ## ADR-004: Use central route registries
 
-**Status:** Accepted
+**Status:** Accepted, amended by ADR-047
 
-Each frontend application owns centralized route definitions.
+Each frontend application owns centralized URL definitions and route files.
 
 Recommended structure:
 
 ```text
 src/routes/
-├── paths.ts
-├── routes.tsx
-└── guards.tsx
+└── paths.ts
+
+src/app/
+├── layout.tsx
+└── <route>/page.tsx
 ```
 
 ### Rationale
@@ -177,8 +179,9 @@ Central route ownership prevents duplicated path strings and inconsistent author
 ### Consequences
 
 - URL builders must use centralized path definitions.
+- Next.js App Router filesystem entries register routes; do not duplicate them
+  in a parallel route table.
 - Route guards must not replace backend authorization.
-- Feature modules may contribute routes through explicit registration.
 - Route modules must declare their public or operations API-surface ownership.
 - Route data requirements must not expose operations-only DTOs through
   Storefront.
@@ -187,9 +190,9 @@ Central route ownership prevents duplicated path strings and inconsistent author
 
 ## ADR-005: Use Tailwind CSS
 
-**Status:** Accepted
+**Status:** Accepted, integration amended by ADR-047
 
-Use Tailwind CSS v4 through the Vite integration.
+Use Tailwind CSS v4 through the framework-supported PostCSS integration.
 
 Initial setup should remain minimal:
 
@@ -1446,3 +1449,55 @@ The engine uses explicit middleware with `gin.New()`; it does not adopt
   contract change is required.
 - Future endpoints must register through the appropriate route group and
   preserve the public/Operations contract boundary.
+
+---
+
+## ADR-047: Use Next.js App Router for both web applications
+
+**Status:** Accepted
+
+### Decision
+
+Migrate `apps/storefront-web` and `apps/operations-web` in place from Vite and
+React Router to the current stable Next.js 16 App Router. The applications
+remain separate workspace packages and independently runnable deployments as
+required by ADR-002.
+
+Use a compatibility-first migration:
+
+- App Router filesystem entries own route registration while each
+  application's `src/routes/paths.ts` remains the central URL constant and
+  dynamic URL-builder registry;
+- existing interactive pages, TanStack Query hooks, forms, and session flows
+  remain Client Components and browser-side API consumers until a separate
+  decision justifies server rendering;
+- the Go API remains the sole authoritative backend; do not add Next.js Route
+  Handlers, Server Actions, middleware authorization, direct database access,
+  or duplicated business rules;
+- local Next.js rewrites preserve the same-origin `/api`, `/health`, and
+  `/ready` paths; deployed routing is owned by ingress or reverse proxy;
+- browser-visible configuration uses `NEXT_PUBLIC_*`, while the optional
+  local API proxy target is server-only;
+- Tailwind CSS 4 uses its PostCSS integration;
+- each app owns a typed manifest and a production-only service worker that may
+  cache immutable framework assets, icons, and a data-free offline fallback,
+  but never API, authentication, participant, financial, or operational data.
+
+Initial pages remain client-rendered for parity. Server Components may provide
+route and layout boundaries, but SSR/RSC data loading, SEO optimization,
+revalidation policy, and middleware guards require separate evidence and work.
+
+### Consequences
+
+- ADR-003 is superseded. React and TypeScript remain; Vite and React Router are
+  removed from both application runtimes.
+- ADR-004 is amended: `paths.ts` remains centralized, while `src/app/**`
+  filesystem routes replace `routes.tsx` registration.
+- ADR-005 is amended only in its framework integration mechanism; Tailwind CSS
+  4 remains accepted.
+- Both web applications require a supported Node.js runtime and emit separate
+  Next.js server artifacts instead of static-only frontend output.
+- Local ports remain 5173 for Storefront and 5174 for Operations so the
+  existing OIDC origin and callback contract remains stable.
+- Provider selection, cloud provisioning, frontend containers, SSR/SEO
+  optimization, and production rollout remain deferred.

@@ -12,8 +12,8 @@
 
 The repository currently provides:
 
-- `apps/storefront-web` — public React application;
-- `apps/operations-web` — internal React application;
+- `apps/storefront-web` — public Next.js React application;
+- `apps/operations-web` — internal Next.js React application;
 - `apps/api` — Go API shell;
 - shared workspace packages;
 - PostgreSQL local infrastructure;
@@ -769,18 +769,21 @@ Webhook handlers must:
 
 ## 16. Frontend Architecture
 
-Both web applications use React, TypeScript, Vite, React Router with
-Remix-style routing conventions, Tailwind CSS, Vitest, and the shared monorepo
-tooling already established in the repository. TanStack Query is the approved
-server-state library when a future vertical slice introduces real API data; it
-is not yet installed or configured.
+Both web applications use Next.js 16 App Router, React, TypeScript, Tailwind
+CSS, Vitest, TanStack Query, and the shared monorepo tooling already established
+in the repository. They remain separate applications and initially keep their
+existing interactive pages and API reads client-rendered for migration parity.
 
 Recommended source structure:
 
 ```text
 src/
 ├── app/
+│   ├── layout.tsx
+│   └── <route>/page.tsx
+├── api/
 ├── routes/
+│   └── paths.ts
 ├── features/
 ├── entities/
 ├── shared/
@@ -789,7 +792,7 @@ src/
 │   ├── hooks/
 │   ├── validation/
 │   └── utilities/
-└── main.tsx
+└── styles/
 ```
 
 ### Frontend Principles
@@ -797,14 +800,12 @@ src/
 - organize by feature rather than technical file type;
 - generated or centralized API client;
 - server state kept distinct from local UI state;
-- use Remix-style route hierarchy, layouts, route boundaries, navigation state,
-  and declared route-data requirements through React Router while retaining the
-  Vite SPA runtime;
-- keep centralized `src/routes/paths.ts` and `src/routes/routes.tsx` as the
-  application-owned registry; feature routes register explicitly rather than
-  scattering path strings;
+- use App Router filesystem entries for route registration and layout
+  composition;
+- keep centralized `src/routes/paths.ts` as the application-owned URL constant
+  and dynamic URL-builder registry rather than scattering path strings;
 - let TanStack Query own remote request lifecycle, cache updates, and
-  invalidation after successful API commands once it is implemented;
+  invalidation after successful API commands;
 - no duplicated domain validation as authoritative logic;
 - route-level access control for operations;
 - accessible components;
@@ -815,9 +816,12 @@ A shared UI package should contain stable primitives, not application-specific p
 
 ### Frontend Data Boundaries
 
-- React Router owns navigation and route composition; it does not introduce a
-  Remix server runtime, server-side rendering, or server actions in the current
-  Vite SPA topology.
+- Next.js App Router owns navigation and route composition. The compatibility
+  migration does not move API reads or commands into Server Components, Route
+  Handlers, Server Actions, or middleware authorization.
+- Next.js server output is a delivery runtime, not a business backend. The Go
+  API remains authoritative for contracts, authorization, transactions,
+  idempotency, audit, and domain behavior.
 - TanStack Query owns only remote API/server state. Forms and transient UI
   state remain feature or component-local unless a separate decision changes
   that boundary.
@@ -923,8 +927,8 @@ Add distributed tracing when asynchronous flow or extracted services make correl
 
 A practical first deployment may contain:
 
-- Storefront Web static deployment;
-- Operations Web static deployment;
+- Storefront Web Next.js runtime;
+- Operations Web Next.js runtime;
 - Go API container;
 - Go worker container;
 - PostgreSQL;
@@ -936,8 +940,8 @@ Internet
    │
    ▼
 CDN / Ingress
-   ├── storefront domain ─► Storefront static app
-   ├── operations domain ─► Operations static app
+   ├── storefront domain ─► Storefront Next.js runtime
+   ├── operations domain ─► Operations Next.js runtime
    └── API domain ────────► Go API
                                 │
                          ┌──────┴──────┐
@@ -946,6 +950,10 @@ CDN / Ingress
 ```
 
 Operations access may be protected by additional network or identity controls.
+Each web runtime is independently built and deployed. Ingress preserves
+same-origin `/api`, `/health`, and `/ready` routing to the Go API; private API
+origins are not exposed in browser bundles. Static assets may use a CDN, but
+the applications are no longer static-only deployments.
 
 ### Environments
 
