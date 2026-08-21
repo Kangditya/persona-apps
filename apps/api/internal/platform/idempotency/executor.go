@@ -136,15 +136,19 @@ func RequestHash(value any) (string, error) {
 }
 
 func Execute(ctx context.Context, db *sql.DB, crypt Cipher, command Command, work func(*sql.Tx) (Response, error)) (response Response, replayed bool, err error) {
-    if command.Namespace == "" || command.Key == "" || command.RequestHash == "" || command.Retention <= 0 {
+    if command.Namespace == "" || command.Key == "" || command.RequestHash == "" || command.Retention < 0 {
         return Response{}, false, errors.New("idempotency command is incomplete")
     }
     err = database.Within(ctx, db, func(tx *sql.Tx) error {
-        if _, deleteErr := tx.ExecContext(ctx, "DELETE FROM idempotency_records WHERE namespace = $1 AND idempotency_key = $2 AND expires_at <= now()", command.Namespace, command.Key); deleteErr != nil {
+        if _, deleteErr := tx.ExecContext(ctx, "DELETE FROM idempotency_records WHERE namespace = $1 AND idempotency_key = $2 AND expires_at IS NOT NULL AND expires_at <= now()", command.Namespace, command.Key); deleteErr != nil {
             return fmt.Errorf("remove expired idempotency record: %w", deleteErr)
         }
+        var expiresAt any
+        if command.Retention > 0 {
+            expiresAt = time.Now().Add(command.Retention)
+        }
         var claimed string
-        claimErr := tx.QueryRowContext(ctx, "INSERT INTO idempotency_records (namespace, idempotency_key, request_hash, expires_at) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING RETURNING namespace", command.Namespace, command.Key, command.RequestHash, time.Now().Add(command.Retention)).Scan(&claimed)
+        claimErr := tx.QueryRowContext(ctx, "INSERT INTO idempotency_records (namespace, idempotency_key, request_hash, expires_at) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING RETURNING namespace", command.Namespace, command.Key, command.RequestHash, expiresAt).Scan(&claimed)
         switch {
         case claimErr == nil:
             result, workErr := work(tx)

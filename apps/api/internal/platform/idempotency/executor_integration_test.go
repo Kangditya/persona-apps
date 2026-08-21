@@ -76,4 +76,22 @@ func TestExecutePostgreSQL(t *testing.T) {
     if err != nil || replayed || retried.Status != 201 {
         t.Fatalf("failed-command retry = %#v, %t, %v", retried, replayed, err)
     }
+
+    durable := Command{Namespace: command.Namespace, Key: command.Key + "-durable", RequestHash: "durable-hash"}
+    t.Cleanup(func() {
+        _, _ = db.ExecContext(context.Background(), `DELETE FROM idempotency_records WHERE namespace = $1 AND idempotency_key = $2`, durable.Namespace, durable.Key)
+    })
+    if _, replayed, err := Execute(context.Background(), db, crypt, durable, work); err != nil || replayed {
+        t.Fatalf("durable first execution replayed=%t err=%v", replayed, err)
+    }
+    var expiresAt sql.NullTime
+    if err := db.QueryRowContext(context.Background(), `SELECT expires_at FROM idempotency_records WHERE namespace = $1 AND idempotency_key = $2`, durable.Namespace, durable.Key).Scan(&expiresAt); err != nil {
+        t.Fatal(err)
+    }
+    if expiresAt.Valid {
+        t.Fatalf("durable replay expires at %s", expiresAt.Time)
+    }
+    if _, replayed, err := Execute(context.Background(), db, crypt, durable, work); err != nil || !replayed {
+        t.Fatalf("durable replay replayed=%t err=%v", replayed, err)
+    }
 }

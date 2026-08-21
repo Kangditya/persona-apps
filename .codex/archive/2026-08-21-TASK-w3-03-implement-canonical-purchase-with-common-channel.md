@@ -1,10 +1,11 @@
 # Task: W3-03 Implement Canonical Purchase with COMMON Channel
 
+## Executed
+
 ## Status
 
-Completed and verified on 2026-08-21. The executed task is archived at
-`.codex/archive/2026-08-21-TASK-w3-03-implement-canonical-purchase-with-common-channel.md`;
-no commit or push was requested.
+Completed and verified on 2026-08-21. W3-01 and W3-02 were verified before
+BUILD; no commit or push was requested.
 
 ## Tracker
 
@@ -242,3 +243,46 @@ Report domain invariants, routes, permissions, SQL/transaction effects,
 contract conformance, checks run, and deferred lifecycle behavior. Do not claim
 checkout completion until W3-04 through W3-06 are also implemented and
 verified.
+
+## Final Review
+
+### Implemented
+
+- A focused canonical Purchase aggregate that always creates a `COMMON`,
+  `PENDING_PAYMENT`, version-one record with explicit purchaser, optional
+  payer, ordered participant snapshots, bounded integer amounts, and a hashed
+  access-token input.
+- PostgreSQL create/get/list persistence. Create writes the Purchase,
+  participants, and `DRAFT -> PENDING_PAYMENT` history through the
+  caller-owned transaction; reads use stored commercial snapshots and current
+  Party display summaries.
+- Authorized Operations `GET /purchases` and `GET /purchases/{purchase_id}`
+  routes behind `purchase.read`, including bounded filters, opaque keyset
+  pagination, explicit DTOs, and participant detail only.
+
+### Verified
+
+- Focused unit, repository, handler, authorization, pagination, and
+  disposable-PostgreSQL integration coverage passed, including transaction
+  rollback and authenticated Operations reads.
+- `go vet ./...`, database-backed `go test ./...`, and `go build ./...`
+  passed from `apps/api`.
+- `make validate`, `docker compose -f infrastructure/compose.yaml config`,
+  `git diff --check`, and Redocly validation of the Operations contract passed.
+  Redocly reports only five existing Operations warnings: missing license,
+  two redirect-only authentication operations, and two unused response
+  components.
+
+### Assumed
+
+- This task establishes only the direct persistence shape. The future public
+  command is the sole writer and will supply a validated Event/Offering pair,
+  Party resolution, snapshots, reservation, token, outbox, and idempotency
+  within its command transaction.
+
+### Deferred
+
+- W3-04 verifies and captures Event/Offering source snapshots and exact total.
+- W3-05 reserves quota; W3-06 publishes the atomic public checkout command.
+- No payment, evidence, cancellation, eligibility, lifecycle transition,
+  non-COMMON channel, or dashboard behavior was added.

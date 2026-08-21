@@ -13,16 +13,29 @@ import (
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/cors"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/httpx"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/ratelimit"
+    "github.com/Kangditya/persona-apps/apps/api/internal/purchasing"
     "github.com/gin-gonic/gin"
 )
 
-func registerPublicRoutes(router *gin.Engine, events event.ActiveReader, offerings offering.PublicCatalogueReader, limiter *ratelimit.PublicLimiter, logger *slog.Logger, allowedOrigins map[string]struct{}) {
+func registerPublicRoutes(router *gin.Engine, events event.ActiveReader, offerings offering.PublicCatalogueReader, purchases *purchasing.PublicHandler, limiter *ratelimit.PublicLimiter, logger *slog.Logger, allowedOrigins map[string]struct{}) {
     public := router.Group(publicAPIPrefix)
-    public.Use(cors.Middleware(cors.Policy{Origins: allowedOrigins, Methods: []string{http.MethodGet}, Headers: []string{"X-Request-ID"}}), publicNoStore(), publicRateLimit(limiter))
+    methods := []string{http.MethodGet}
+    headers := []string{"X-Request-ID"}
+    if purchases != nil {
+        methods = append(methods, http.MethodPost)
+        headers = append(headers, "Content-Type", "Idempotency-Key")
+    }
+    public.Use(cors.Middleware(cors.Policy{Origins: allowedOrigins, Methods: methods, Headers: headers}), publicNoStore(), publicRateLimit(limiter))
     event.RegisterPublicRoutes(public, events, logger)
     offering.RegisterPublicRoutes(public, offerings, logger)
+    if purchases != nil {
+        purchases.RegisterRoutes(public)
+    }
     for _, path := range []string{"/events/active", "/events/:event_id/offerings", "/offerings/:offering_id"} {
         public.OPTIONS(path, func(c *gin.Context) { c.Status(http.StatusNoContent) })
+    }
+    if purchases != nil {
+        public.OPTIONS("/purchases", func(c *gin.Context) { c.Status(http.StatusNoContent) })
     }
 }
 

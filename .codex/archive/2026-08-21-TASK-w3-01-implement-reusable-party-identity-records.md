@@ -1,10 +1,12 @@
 # Task: W3-01 Implement Reusable Party Identity Records
 
+## Executed
+
 ## Status
 
-Completed and verified on 2026-08-21. The executed task is archived at
-`.codex/archive/2026-08-21-TASK-w3-01-implement-reusable-party-identity-records.md`;
-no commit or push was requested.
+Active — execution authorized on 2026-08-21. Discovery was completed before
+approval. BUILD is now permitted within this task's stated scope; do not commit
+or push unless requested.
 
 ## Tracker
 
@@ -194,3 +196,39 @@ The final report must list the exact files changed, schema impact, focused and
 full checks run, failures or skipped checks, and remaining identity risks. Mark
 the behavior as complete only when the acceptance criteria are verified; then
 archive the active task using the repository's canonical execution workflow.
+
+## Final Review
+
+### Implemented
+
+- Added the focused `internal/identity` Party domain and PostgreSQL repository:
+  create, UUID read, accepted `PERSON`/`ORGANIZATION` types, optional null
+  contact values, timestamps, and stable invalid/not-found errors.
+- Reused the existing `parties` table and caller-owned transaction handle. No
+  lookup, matching, merge, migration, HTTP endpoint, dependency, or generic
+  abstraction was added.
+- Added domain, SQL-mock, and disposable PostgreSQL coverage for validation,
+  null values, rollback, and reuse of the same Party ID for purchaser and
+  payer columns.
+
+### Verified
+
+- `go test ./internal/identity/...` — 4 tests passed.
+- Disposable PostgreSQL migration setup and
+  `TEST_DATABASE_URL=... go test ./internal/identity/... -run '^TestRepositoryPostgreSQL$' -count=1`
+  — passed.
+- `go vet ./...`, `go test ./...` (209 tests / 21 packages), and
+  `go build ./...` — passed.
+- `make validate`, `docker compose -f infrastructure/compose.yaml config`,
+  and `git diff --check` — passed.
+
+### Assumed
+
+- Existing `parties` UUID defaults, type check, nullable contacts, and
+  non-unique contact indexes remain the shared database contract.
+
+### Deferred
+
+- W3-02 owns the explicit request syntax for Party reuse across checkout roles.
+- Contact-based identity search, deduplication, merging, and Party CRUD remain
+  deliberately out of scope.

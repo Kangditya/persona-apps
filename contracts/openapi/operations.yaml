@@ -1598,7 +1598,14 @@ components:
         offering_id: { type: string, format: uuid }
         offering_name_snapshot: { type: string }
         participant_count: { type: integer, minimum: 1 }
-        total_amount_minor: { type: integer, minimum: 0 }
+        participants:
+          type: array
+          description: Present on detail responses; each value is a stored intended-participant name snapshot.
+          items: { $ref: "#/components/schemas/PurchaseParticipantSnapshot" }
+        total_amount_minor:
+          type: integer
+          minimum: 0
+          description: Exact captured offering unit price multiplied by participant_count; no rounding is applied.
         currency_code: { type: string, pattern: "^[A-Z]{3}$" }
         status:
           {
@@ -1619,6 +1626,13 @@ components:
         cancellation_reason: { type: string }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    PurchaseParticipantSnapshot:
+      type: object
+      additionalProperties: false
+      required: [sequence_no, display_name]
+      properties:
+        sequence_no: { type: integer, minimum: 1 }
+        display_name: { type: string, minLength: 1, maxLength: 255 }
     Payment:
       type: object
       additionalProperties: false

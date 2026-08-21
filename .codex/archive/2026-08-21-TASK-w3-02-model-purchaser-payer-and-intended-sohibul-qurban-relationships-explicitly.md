@@ -1,10 +1,12 @@
 # Task: W3-02 Model Purchaser, Payer, and Intended Sohibul Qurban Relationships Explicitly
 
+## Executed
+
 ## Status
 
-Completed and verified on 2026-08-21. The executed task is archived at
-`.codex/archive/2026-08-21-TASK-w3-02-model-purchaser-payer-and-intended-sohibul-qurban-relationships-explicitly.md`;
-no commit or push was requested.
+Active — execution and the contract decision below were authorized on
+2026-08-21. BUILD is permitted within this task's stated scope; do not commit
+or push unless requested.
 
 ## Tracker
 
@@ -227,3 +229,41 @@ The final report must reproduce the approved payload semantics, show the
 role-to-column mapping, list tests and schema impact, and distinguish resolved
 Parties from name-only intended participants. Do not call the task complete if
 the contract decision remains open or contract/runtime behavior diverges.
+
+## Final Review
+
+### Implemented
+
+- Added ADR-048 and the Storefront OpenAPI `PartyDeclaration`,
+  `PartyReference`, and name-only participant forms, including shared and
+  distinct-role examples.
+- Added the focused `purchasing.NewRelationships` resolver. It permits Party
+  reuse only by an exact request-local label; duplicate declarations, unknown
+  labels, and mixed forms fail before any persistence work.
+- The mapping is exact: purchaser/payer resolve to Party UUID roles; resolved
+  participant rows carry a Party UUID plus a display-name snapshot; name-only
+  participants carry a null Party reference plus their supplied snapshot.
+
+### Verified
+
+- `go test ./internal/identity/... ./internal/purchasing/...` — focused domain
+  and repository coverage passed.
+- `go vet ./...`, `go test ./...` (212 tests / 22 packages), and `go build ./...` — passed.
+- `make validate`, Compose configuration, and `git diff --check` — passed.
+- `pnpm --package=@redocly/cli@2.46.1 dlx redocly lint contracts/openapi/storefront.yaml`
+  — no errors; its sole warning is the pre-existing missing `info.license`.
+- Disposable PostgreSQL W3-03 repository coverage proved Party-ID role columns,
+  ordered name snapshots, initial history, and parent-transaction rollback.
+
+### Assumed
+
+- `party_ref` is an intentionally request-local label. W3-06 will create the
+  approved Party rows and translate labels to the already-tested UUID mapping
+  within the checkout transaction.
+
+### Deferred
+
+- No public checkout route, Party search, contact matching, deduplication,
+  customer account, or Sohibul Qurban outcome was added.
+- W3-03 owns the concrete Purchase repository and Operations read surface;
+  W3-06 owns public command composition.

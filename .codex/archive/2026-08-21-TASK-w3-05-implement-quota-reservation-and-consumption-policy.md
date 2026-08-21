@@ -1,10 +1,10 @@
 # Task: W3-05 Implement Quota Reservation and Consumption Policy
 
+## Executed
+
 ## Status
 
-Completed and verified on 2026-08-21. The executed task is archived at
-`.codex/archive/2026-08-21-TASK-w3-05-implement-quota-reservation-and-consumption-policy.md`;
-no commit or push was requested.
+Completed and verified on 2026-08-21. No commit or push was requested.
 
 ## Tracker
 
@@ -240,3 +240,45 @@ stress count used for the contention case.
 Report lock order, exact counting query/semantics, transaction composition,
 contention evidence, error mapping, and later transitions not implemented.
 Do not call capacity protected without a real concurrent PostgreSQL check.
+
+## Final Review
+
+### Implemented
+
+- `LockCheckout` locks Event then Offering in the caller-owned PostgreSQL
+  transaction, requires an active Event, published Offering, matching Event
+  relationship, and an open registration window.
+- `Reserve` creates attempt-one `RESERVED` records with the Purchase's exact
+  participant count and a stored 24-hour expiry. It counts only `RESERVED` and
+  `CONSUMED` rows under the retained Event lock.
+- Aggregate guards use the documented optional Event and Offering
+  `participant_quota` values. Required Offering `participant_capacity` remains
+  the existing per-Purchase bound; it is intentionally not misused as a global
+  quota.
+
+### Verified
+
+- Unit coverage validates source status, Event/Offering relationship,
+  registration-window, and participant-count guards.
+- Disposable PostgreSQL coverage verifies stored expiry, counted versus
+  terminal reservation states, rollback after a post-reservation failure,
+  bounded and unbounded quota semantics, and a real two-transaction last-unit
+  race. The race passed three consecutive repetitions with exactly one commit.
+- `go vet ./...`, database-backed `go test ./...`, `go build ./...`,
+  `make validate`, `docker compose -f infrastructure/compose.yaml config`, and
+  `git diff --check` passed.
+
+### Assumed
+
+- Registration windows are interpreted as `[opens_at, closes_at)`: opening is
+  inclusive and the exact closing instant is no longer eligible. This is an
+  explicit implementation boundary because canonical artifacts require a
+  window but do not state endpoint inclusivity.
+
+### Deferred
+
+- W3-04 remains blocked on the product total formula; W3-06 will compose this
+  locked reservation with snapshots, Party creation, reference/token,
+  idempotency, outbox, and public checkout.
+- Consume, release, expiry, reacquisition, evidence pause, workers, routes,
+  counters, and distributed locking were not added.

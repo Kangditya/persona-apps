@@ -1,19 +1,19 @@
 # Task: Migrate Storefront and Operations Web to Next.js App Router
 
+## Executed
+
 ## Status
 
-Implementation complete; verification incomplete as of 2026-08-20. The user
-explicitly approved the plan, including its migration, dependency, ADR, and
-runtime deployment assumptions.
+Executed and verified on 2026-08-21. The user explicitly approved the plan,
+including its migration, dependency, ADR, and runtime deployment assumptions.
 
 Both Next.js applications, production runtimes, proxy behavior, and generated
 PWA policies are implemented. Real local API/PostgreSQL/OIDC command-path
-verification passed. Interactive browser/PWA parity is not proven because the
-configured browser-control runtime was unavailable. Repository validation also
-remains blocked by pre-existing Go formatter drift in four untouched files and
-an expired hard-coded authentication-test timestamp. Keep this task active; do
-not add the Executed marker or archive it until those verification gaps are
-resolved.
+verification passed. Production Chrome browser smoke also proved direct loads,
+hydration, Storefront client navigation, and the user-controlled offline-ready
+PWA status in both applications. Repository validation is green after
+normalizing pre-existing Go formatter drift and making the auth-session test's
+fixture expiry time-relative.
 
 ## Objective
 
@@ -637,3 +637,51 @@ Distinguish:
 
 Do not mark the task Executed or archive it until the objective is implemented,
 all acceptance criteria are verified, and the final review is complete.
+
+## Final Review
+
+### Implemented
+
+- Storefront and Operations are independent Next.js 16 App Router applications
+  with retained URL builders, browser-owned TanStack Query, application-owned
+  API modules, and no duplicated Go business behavior.
+- Production service-worker generation, manifests, data-free offline fallback,
+  and user-controlled PWA status remain in each application. API, auth, probes,
+  cross-origin, and non-GET requests remain network-only by policy.
+- The only verification-era Go changes were formatting normalization of four
+  previously drifted files and a time-relative test fixture in
+  `TestSessionReturnsExpiryAndSortedPermissionsWithoutCaching`; no runtime API
+  or product behavior changed.
+
+### Verified
+
+- `make validate` passed, including formatting, frontend lint/typecheck/test/
+  build, Go vet/test/build, and Compose configuration.
+- `docker build -f apps/api/Dockerfile apps/api` passed.
+- Production `next start` instances for Storefront (`5173`) and Operations
+  (`5174`) loaded directly in Chrome, hydrated without console errors, and
+  rendered the expected navigation/error boundaries when the API was absent.
+- Storefront client navigation to `/offerings` completed under the production
+  server. Both apps displayed the offline-ready PWA status after worker
+  registration.
+- The existing real Go API/PostgreSQL/local-OIDC command-path evidence remains
+  recorded in `.codex/CURRENT_STATE.md`; it covers Operations session/OIDC,
+  CRUD/lifecycle, idempotency, conflict, CSRF recovery, public projection, and
+  logout.
+- No obsolete Vite/React Router/PWA runtime coupling remains under either web
+  application.
+
+### Assumed and Deferred
+
+- The browser-control evaluation surface does not expose direct
+  `navigator.serviceWorker` or CDP ServiceWorker inspection. Actual registration
+  is evidenced by the production PWA status UI; deterministic worker-policy
+  tests continue to prove cache exclusions.
+- Cross-browser release QA, deployed-ingress behavior, hosting/provider choice,
+  CSP/HSTS, load/soak testing, and broader accessibility certification remain
+  follow-up release work, not blockers for this completed migration scope.
+
+### Next Task
+
+Activate and execute W3-01, then continue the approved Common Purchase vertical
+slice through W3-06.

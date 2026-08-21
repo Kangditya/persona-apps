@@ -1,10 +1,10 @@
 # Task: W3-04 Snapshot Event, Offering, Price, and Participant-Capacity Data
 
+## Executed
+
 ## Status
 
-Completed and verified on 2026-08-21. The accepted formula is enforced by the
-shared Purchase constructor and snapshots are built only from the W3-05 locked
-checkout source. No commit or push was requested.
+Completed and verified on 2026-08-21. No commit or push was requested.
 
 ## Tracker
 
@@ -231,3 +231,24 @@ OpenAPI contracts if either is edited.
 Report the accepted formula, exact source-to-snapshot mapping, schema changes
 (expected none), historical-stability evidence, verification output, and any
 remaining ambiguity. Do not mark complete while the formula is undecided.
+
+## Execution Review
+
+- Implemented: ADR-049 fixes the exact total as captured unit price multiplied
+  by intended participant count. `NewPurchase` rejects mismatched, unsafe, and
+  overflowing values, while `NewSnapshotPurchase` copies the locked Event and
+  Offering identity/commercial values into the existing Purchase fields.
+- Implemented: Storefront and Operations contract descriptions now make the
+  captured total rule explicit. No migration, snapshot blob, new Event fields,
+  or generic snapshot framework was added.
+- Verified: focused purchasing tests, a PostgreSQL source-mutation regression,
+  full API vet/test/build with disposable PostgreSQL, `make validate`, Compose
+  configuration, `git diff --check`, and both OpenAPI lint runs passed. The
+  OpenAPI linter retains its pre-existing one Storefront and five Operations
+  warnings.
+- Assumed: ADR-042/current schema bounds the Event snapshot to immutable Event
+  identity. Current purchaser/payer Party summaries intentionally remain live
+  referenced identity data.
+- Deferred: W3-06 owns the public command, idempotency, reference/token, and
+  outbox composition; later financial and richer historical Event reporting
+  need separately accepted requirements.

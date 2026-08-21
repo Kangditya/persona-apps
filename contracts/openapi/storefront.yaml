@@ -116,9 +116,11 @@ paths:
         same Idempotency-Key and canonical request replay the committed status
         and body; a changed request returns idempotency_conflict. The one-time
         Purchase access token is returned only in this checkout result and is
-        never available through a read endpoint.
+        never available through a read endpoint. Party references are opaque,
+        request-local labels: reuse occurs only when a role explicitly names a
+        label declared by purchaser or payer in this same request.
       x-idempotency:
-        namespace: storefront.common-purchase.create
+        namespace: storefront.purchase.create.guest
         replay: exact request hash returns the original successful response
         mismatch: idempotency_conflict
       parameters:
@@ -126,21 +128,53 @@ paths:
         - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
+        description: One JSON object, limited to 64 KiB. Participant count must fit the selected Offering's captured capacity.
         content:
           application/json:
             schema:
               $ref: "#/components/schemas/CreatePurchaseRequest"
+            examples:
+              shared_purchaser_payer:
+                summary: Purchaser pays and is one intended participant.
+                value:
+                  offering_id: "11111111-1111-1111-1111-111111111111"
+                  purchaser:
+                    party_ref: purchaser
+                    display_name: Siti Aminah
+                    email: siti@example.test
+                  payer: { party_ref: purchaser }
+                  participants:
+                    - { party_ref: purchaser }
+                    - { display_name: Ahmad }
+              distinct_purchaser_and_payer:
+                summary: A distinct payer and an unresolved intended participant.
+                value:
+                  offering_id: "11111111-1111-1111-1111-111111111111"
+                  purchaser:
+                    party_ref: purchaser
+                    display_name: Siti Aminah
+                  payer:
+                    party_ref: payer
+                    display_name: Budi Santoso
+                    phone: "+628100000000"
+                  participants:
+                    - { party_ref: payer }
+                    - { display_name: Ahmad }
       responses:
         "201":
           description: The pending purchase and its opaque access token.
           headers:
             X-Request-ID:
               $ref: "#/components/headers/RequestID"
+            Cache-Control:
+              $ref: "#/components/headers/NoStoreCacheControl"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/CreatePurchaseResponse"
         "400": { $ref: "#/components/responses/InvalidRequest" }
+        "413": { $ref: "#/components/responses/RequestTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedJSONMediaType" }
         "409": { $ref: "#/components/responses/CheckoutConflict" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
         "429": { $ref: "#/components/responses/RateLimited" }
@@ -378,7 +412,7 @@ components:
             { schema: { $ref: "#/components/schemas/ErrorResponse" } },
         }
     CheckoutConflict:
-      description: Quota is unavailable or the idempotency key was reused with a different payload.
+      description: Checkout state or quota is unavailable, or the idempotency key was reused with a different payload.
       headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
       content:
         {
@@ -403,6 +437,22 @@ components:
         }
     UnsupportedMediaType:
       description: Evidence must be a JPEG, PNG, or PDF.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    RequestTooLarge:
+      description: The JSON command body exceeds the documented 64 KiB limit.
+      headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
+      content:
+        {
+          application/json:
+            { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+        }
+    UnsupportedJSONMediaType:
+      description: The command requires Content-Type application/json.
       headers: { X-Request-ID: { $ref: "#/components/headers/RequestID" } }
       content:
         {
@@ -524,26 +574,53 @@ components:
       required: [offering_id, purchaser, payer, participants]
       properties:
         offering_id: { type: string, format: uuid }
-        purchaser: { $ref: "#/components/schemas/ContactInput" }
-        payer: { $ref: "#/components/schemas/ContactInput" }
+        purchaser: { $ref: "#/components/schemas/PartyDeclaration" }
+        payer:
+          oneOf:
+            - $ref: "#/components/schemas/PartyDeclaration"
+            - $ref: "#/components/schemas/PartyReference"
         participants:
           type: array
           minItems: 1
-          items: { $ref: "#/components/schemas/ParticipantInput" }
-    ContactInput:
+          items:
+            oneOf:
+              - $ref: "#/components/schemas/PartyReference"
+              - $ref: "#/components/schemas/ParticipantNameInput"
+    PartyDeclaration:
       type: object
       additionalProperties: false
-      required: [display_name]
+      required: [party_ref, display_name]
       properties:
+        party_ref:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+          description: Opaque label unique to this request. It is not a Party UUID or a durable identifier.
         display_name: { type: string, minLength: 1, maxLength: 255 }
         email: { type: string, format: email, maxLength: 320 }
         phone: { type: string, minLength: 1, maxLength: 64 }
-    ParticipantInput:
+    PartyReference:
+      type: object
+      additionalProperties: false
+      required: [party_ref]
+      properties:
+        party_ref:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+          description: Must name exactly one purchaser or payer declaration in this request.
+    ParticipantNameInput:
       type: object
       additionalProperties: false
       required: [display_name]
       properties:
-        display_name: { type: string, minLength: 1, maxLength: 255 }
+        display_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Name-only intended participant. It remains unresolved until a later approved workflow links a Party.
     CreatePurchaseResponse:
       type: object
       additionalProperties: false
@@ -558,6 +635,8 @@ components:
             access_token:
               type: string
               minLength: 43
+              maxLength: 43
+              pattern: "^[A-Za-z0-9_-]{43}$"
               description: Opaque Purchase bearer token. Store securely; it is not returned by read endpoints.
     PublicPurchase:
       type: object
@@ -576,7 +655,10 @@ components:
         ]
       properties:
         id: { type: string, format: uuid }
-        purchase_ref: { type: string, minLength: 1 }
+        purchase_ref:
+          type: string
+          pattern: "^QRB-[0-9]{4}-[A-Z2-7]{16}$"
+          description: Non-secret support reference. The UUID remains the canonical API identifier.
         channel: { type: string, const: COMMON }
         offering:
           type: object
@@ -586,7 +668,10 @@ components:
             id: { type: string, format: uuid }
             name: { type: string }
             kind: { type: string }
-            unit_price_minor: { type: integer, minimum: 0 }
+            unit_price_minor:
+              type: integer
+              minimum: 0
+              description: Captured per intended participant; total_amount_minor is this exact value multiplied by participant_count.
             participant_capacity: { type: integer, minimum: 1 }
         participant_count: { type: integer, minimum: 1 }
         participants:
@@ -600,7 +685,10 @@ components:
               display_name: { type: string }
               status:
                 { type: string, enum: [PENDING, ACTIVE, REPLACED, CANCELLED] }
-        total_amount_minor: { type: integer, minimum: 0 }
+        total_amount_minor:
+          type: integer
+          minimum: 0
+          description: Exact captured unit_price_minor multiplied by participant_count; no rounding is applied.
         currency_code: { type: string, pattern: "^[A-Z]{3}$" }
         status:
           { type: string, enum: [PENDING_PAYMENT, PAID, ELIGIBLE, CANCELLED] }

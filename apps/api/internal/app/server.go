@@ -10,6 +10,7 @@ import (
     "github.com/Kangditya/persona-apps/apps/api/internal/event"
     "github.com/Kangditya/persona-apps/apps/api/internal/offering"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/auth"
+    "github.com/Kangditya/persona-apps/apps/api/internal/purchasing"
 )
 
 const readinessTimeout = 2 * time.Second
@@ -18,9 +19,9 @@ type readinessChecker interface {
     PingContext(context.Context) error
 }
 
-func NewServer(address string, database readinessChecker, logger *slog.Logger, public config.PublicConfig, operationsAuth *auth.Service, eventOperations *event.OperationsHandler, offeringOperations *offering.OperationsHandler) (*http.Server, error) {
+func NewServer(address string, database readinessChecker, logger *slog.Logger, public config.PublicConfig, publicPurchases *purchasing.PublicHandler, operationsAuth *auth.Service, eventOperations *event.OperationsHandler, offeringOperations *offering.OperationsHandler, purchaseOperations *purchasing.OperationsHandler) (*http.Server, error) {
     events, offerings := publicReaders(database)
-    router, err := newRouter(database, logger, public, operationsAuth, events, offerings, eventOperations, offeringOperations)
+    router, err := newRouter(database, logger, public, publicPurchases, operationsAuth, events, offerings, eventOperations, offeringOperations, purchaseOperations)
     if err != nil {
         return nil, err
     }

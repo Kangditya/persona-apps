@@ -68,7 +68,7 @@ func TestSessionReturnsExpiryAndSortedPermissionsWithoutCaching(t *testing.T) {
     t.Cleanup(func() { _ = database.Close() })
 
     token := strings.Repeat("s", 43)
-    expiry := time.Date(2026, time.August, 15, 9, 30, 0, 0, time.FixedZone("WIB", 7*60*60))
+    expiry := time.Now().Add(time.Hour).UTC()
     mock.ExpectQuery("SELECT u.id, u.display_name").WithArgs(digest(token)).WillReturnRows(
         sqlmock.NewRows([]string{"id", "display_name", "status", "permission_snapshot", "expires_at"}).
             AddRow("11111111-1111-1111-1111-111111111111", "Operator", "ACTIVE", `["offering.read","event.manage","event.read"]`, expiry),

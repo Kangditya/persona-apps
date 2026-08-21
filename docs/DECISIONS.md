@@ -1501,3 +1501,131 @@ revalidation policy, and middleware guards require separate evidence and work.
   existing OIDC origin and callback contract remains stable.
 - Provider selection, cloud provisioning, frontend containers, SSR/SEO
   optimization, and production rollout remain deferred.
+
+---
+
+## ADR-048: Use request-local Party references for guest Common Purchase
+
+**Status:** Accepted
+
+### Decision
+
+The guest Common Purchase request uses opaque, request-local `party_ref`
+labels to make role reuse explicit. A Party declaration includes a unique
+label and contact-backed display name. Purchaser is always a declaration;
+payer is either a distinct declaration or a reference to purchaser. An
+intended participant is either a reference to one declared purchaser/payer
+Party or a name-only unresolved participant.
+
+`party_ref` is not a Party UUID, customer identifier, or durable handle. It
+is valid only within one request. Each declaration label must be unique and
+every reference must resolve to exactly one declaration in that request. A
+duplicate declaration, unknown reference, or object mixing a reference with
+declaration/name fields is invalid. Equal names, emails, and phones never
+create a reference or merge identities.
+
+The server creates Party rows only from purchaser/payer declarations. A
+resolved participant writes the referenced Party UUID and its current display
+name snapshot; a name-only participant writes a null `party_id` with the
+provided display-name snapshot. The labels are part of the request payload and
+therefore part of the canonical idempotency hash.
+
+### Consequences
+
+- The Storefront OpenAPI contract uses mutually exclusive declaration,
+  reference, and name-only participant shapes with examples for shared and
+  distinct roles.
+- Existing Party and Purchase foreign keys represent the relationships; no
+  relationship table, Party search endpoint, contact matching, or migration is
+  needed.
+- A later authenticated Party-selection or merge workflow requires its own
+  contract and decision; it must not overload these guest request labels.
+
+---
+
+## ADR-049: Price Common Purchases per intended participant
+
+**Status:** Accepted
+
+### Context
+
+A Common Purchase stores one Offering, a captured
+`offering_unit_price_minor`, an intended `participant_count`, and
+`total_amount_minor`. Phase 1 has no cart, purchase-item, or independent
+quantity aggregate. Existing two-participant Purchase fixtures already record
+twice the Offering unit price, while quota uses the same participant-unit
+measure.
+
+### Decision
+
+For a Phase 1 Common Purchase, the total is the exact minor-unit product:
+
+```text
+total_amount_minor = offering_unit_price_minor × participant_count
+```
+
+The unit price, currency, capacity, count, and total are captured once at
+checkout. The multiplication uses checked integer arithmetic and rejects any
+result above the API/database exact-integer bound. A zero unit price remains
+valid and yields a zero total. Taxes, discounts, fees, donations, conversion,
+and a separate purchase quantity remain out of scope.
+
+### Consequences
+
+- `participant_count` is the commercial count as well as the quota unit for
+  this one-Offering Common Purchase.
+- The Purchase constructor validates the formula, so direct persistence and
+  future public checkout cannot bypass it.
+- No migration is required: existing immutable snapshot columns already hold
+  the inputs and result.
+- Any future Offering whose price is for a whole multi-participant package
+  needs an explicit pricing-mode requirement and additive contract/schema
+  design; it must not silently reinterpret this formula.
+
+---
+
+## ADR-050: Make guest Common Purchase creation durable and replayable
+
+**Status:** Accepted
+
+### Decision
+
+The Purchase UUID remains the canonical API identifier. A Common Purchase also
+gets a non-secret human/support reference in this exact form:
+
+```text
+QRB-<event-year>-<16 uppercase unpadded Base32 characters>
+```
+
+The suffix encodes 10 bytes from `crypto/rand` (80 bits). A database duplicate
+reference rolls back the checkout and retries with a new candidate at most five
+times; no sequential identifier or generated volume is exposed.
+
+Guest checkout has no authenticated person or durable browser identity, so its
+ADR-041 namespace is the stable literal
+`storefront.purchase.create.guest`. It identifies the Storefront surface,
+Purchase creation command, and the one global guest scope. Request IDs, IP
+addresses, headers, Purchase tokens, and Party contacts are never used as
+caller scope. The client-supplied high-entropy idempotency key represents one
+guest intent and stays only in `idempotency_records`.
+
+For Common Purchase checkout, `Command.Retention == 0` means durable replay:
+`idempotency_records.expires_at` is `NULL` and the record is not removed by
+normal expiry processing. This is required because issuing another Purchase for
+the same retry would remain unacceptable after 24 hours. A configured
+idempotency response key must remain available for every durable replay it
+encrypted; key cleanup/rotation and any controlled record-retention process
+need a separate approved operational policy.
+
+### Consequences
+
+- The encrypted response replay contains the one-time Purchase token but no
+  plaintext token, contact, or raw idempotency key is copied to domain, audit,
+  or outbox data.
+- A successful guest checkout creates Parties, Purchase/history, reservation,
+  outbox events, and the durable encrypted replay in one transaction. Failed
+  attempts, including a reference collision, leave no completed replay record.
+- Other commands retain their explicit positive replay windows. A negative
+  retention is invalid.
+- Purchase tracking, cancellation, evidence, payment, token recovery, and
+  background cleanup remain separate lifecycle work.

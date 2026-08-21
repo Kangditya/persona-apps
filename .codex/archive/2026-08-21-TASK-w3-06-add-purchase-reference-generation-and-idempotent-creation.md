@@ -1,10 +1,10 @@
 # Task: W3-06 Add Purchase Reference Generation and Idempotent Creation
 
+## Executed
+
 ## Status
 
-Completed and verified on 2026-08-21. The executed task is archived at
-`.codex/archive/2026-08-21-TASK-w3-06-add-purchase-reference-generation-and-idempotent-creation.md`;
-no commit or push was requested.
+Completed and verified on 2026-08-21. No commit or push was requested.
 
 ## Tracker
 

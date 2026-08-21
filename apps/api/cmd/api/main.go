@@ -19,6 +19,7 @@ import (
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/database"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/idempotency"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/logger"
+    "github.com/Kangditya/persona-apps/apps/api/internal/purchasing"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -44,8 +45,10 @@ func run(log *slog.Logger) error {
     defer db.Close()
 
     var operationsAuth *auth.Service
+    var publicPurchases *purchasing.PublicHandler
     var eventOperations *event.OperationsHandler
     var offeringOperations *offering.OperationsHandler
+    var purchaseOperations *purchasing.OperationsHandler
     if configuration.Auth != nil {
         configuredAuth, authErr := auth.New(context.Background(), db, *configuration.Auth)
         if authErr != nil {
@@ -56,10 +59,12 @@ func run(log *slog.Logger) error {
         if cipherErr != nil {
             return fmt.Errorf("create idempotency cipher: %w", cipherErr)
         }
+        publicPurchases = purchasing.NewPublicHandler(db, cipher, log)
         eventOperations = event.NewOperationsHandler(db, cipher, log)
         offeringOperations = offering.NewOperationsHandler(db, cipher, log)
+        purchaseOperations = purchasing.NewOperationsHandler(db, log)
     }
-    server, err := app.NewServer(configuration.HTTPAddress, db, log, configuration.Public, operationsAuth, eventOperations, offeringOperations)
+    server, err := app.NewServer(configuration.HTTPAddress, db, log, configuration.Public, publicPurchases, operationsAuth, eventOperations, offeringOperations, purchaseOperations)
     if err != nil {
         return fmt.Errorf("create HTTP server: %w", err)
     }

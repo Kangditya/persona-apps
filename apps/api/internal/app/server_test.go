@@ -19,6 +19,7 @@ import (
     "github.com/Kangditya/persona-apps/apps/api/internal/offering"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/auth"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/idempotency"
+    "github.com/Kangditya/persona-apps/apps/api/internal/purchasing"
 )
 
 type pingFunc func(context.Context) error
@@ -115,6 +116,7 @@ func TestRouterUsesAPIErrorBoundary(t *testing.T) {
         {name: "unknown Operations route", method: http.MethodGet, path: "/api/operations/v1/missing", wantStatus: http.StatusNotFound, wantCode: "not_found", wantNoStore: true},
         {name: "unavailable public dependency", method: http.MethodGet, path: "/api/public/v1/events/active", wantStatus: http.StatusServiceUnavailable, wantCode: "service_unavailable", wantNoStore: true},
         {name: "unsupported public method", method: http.MethodPost, path: "/api/public/v1/events/active", wantStatus: http.StatusMethodNotAllowed, wantCode: "method_not_allowed"},
+        {name: "purchase write remains unregistered", method: http.MethodPost, path: "/api/public/v1/purchases", wantStatus: http.StatusNotFound, wantCode: "not_found"},
     }
     for _, test := range tests {
         t.Run(test.name, func(t *testing.T) {
@@ -225,7 +227,7 @@ func TestServerRegistersOperationsEventAndOfferingRoutesBehindAuthentication(t *
         t.Fatal(err)
     }
     logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, authentication, event.NewOperationsHandler(database, cipher, logger), offering.NewOperationsHandler(database, cipher, logger))
+    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, authentication, event.NewOperationsHandler(database, cipher, logger), offering.NewOperationsHandler(database, cipher, logger), purchasing.NewOperationsHandler(database, logger))
     if err != nil {
         t.Fatal(err)
     }
@@ -250,6 +252,8 @@ func TestServerRegistersOperationsEventAndOfferingRoutesBehindAuthentication(t *
         {http.MethodPost, "/api/operations/v1/offerings/22222222-2222-2222-2222-222222222222/publish"},
         {http.MethodPost, "/api/operations/v1/offerings/22222222-2222-2222-2222-222222222222/unavailable"},
         {http.MethodPost, "/api/operations/v1/offerings/22222222-2222-2222-2222-222222222222/archive"},
+        {http.MethodGet, "/api/operations/v1/purchases"},
+        {http.MethodGet, "/api/operations/v1/purchases/33333333-3333-3333-3333-333333333333"},
     }
     for _, route := range routes {
         response := httptest.NewRecorder()
@@ -297,7 +301,7 @@ func newTestAuthentication(t *testing.T, database *sql.DB) *auth.Service {
 
 func newTestServer(t *testing.T, database readinessChecker, logger *slog.Logger, public config.PublicConfig) *http.Server {
     t.Helper()
-    server, err := NewServer(":0", database, logger, public, nil, nil, nil)
+    server, err := NewServer(":0", database, logger, public, nil, nil, nil, nil, nil)
     if err != nil {
         t.Fatal(err)
     }

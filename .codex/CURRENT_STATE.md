@@ -169,6 +169,11 @@ Current backend capabilities:
 - Docker image build.
 - guest `GET /api/public/v1/events/active`, Event Offering-list, and Offering
   detail routes with active/published filtering;
+- guest `POST /api/public/v1/purchases` for one-Offering `COMMON` checkout:
+  strict bounded JSON and explicit request-local Party roles, captured
+  Event/Offering pricing and capacity snapshots, 24-hour quota reservation,
+  `QRB-<year>-<80-bit Base32>` support reference, SHA-256 token storage, two
+  minimized Purchase outbox events, and durable encrypted idempotency replay;
 - request-correlated public JSON errors, recovery, no-store catalogue headers,
   bounded per-process guest rate limiting, and disabled-by-default proxy trust.
 - permission-gated Operations Event/Offering list, detail, create, patch, and
@@ -201,9 +206,12 @@ Implemented platform foundations:
 - request-ID middleware, structured error envelopes, transaction helper,
   caller-transaction audit writer, and encrypted idempotency replay executor.
 
-ADR-043 through ADR-045 define these contracts. Event/Offering Operations
-commands now compose the platform foundations transactionally; Storefront
-Purchase access remains unimplemented. Auth and protected business routes exist
+ADR-043 through ADR-045 and ADR-048 through ADR-050 define these contracts.
+Event/Offering Operations commands and Storefront Common Purchase checkout
+compose the platform foundations transactionally. Guest checkout has no request
+authentication requirement, but its route is registered only when the existing
+encrypted idempotency-response-key configuration is present; the public
+catalogue remains available without it. Auth and protected business routes exist
 only when the complete fail-closed configuration is present; no secret value is
 committed.
 
@@ -237,9 +245,10 @@ Implemented as contracts, placeholders, or shells:
 
 The separate public and operations OpenAPI contracts define Phase 1 request,
 response, permission, request-ID, CSRF, idempotency, and error behavior. Public
-and Operations Event/Offering contract paths have matching API routes; Purchase
-and later Operations groups remain contract-only. Storefront Event/Offering
-discovery now consumes only the minimized public contract.
+and Operations Event/Offering contract paths plus public Common Purchase
+creation have matching API routes; later Purchase and Operations groups remain
+contract-only. Storefront Event/Offering discovery now consumes only the
+minimized public contract.
 
 ### Database lifecycle tooling
 
@@ -335,10 +344,12 @@ Qurban activation.
 
 Migration 0005 now scripts the supporting Offering quota, quota-reservation,
 participant, evidence, token, session, and audit storage. No runtime command
-currently enforces lifecycle, evidence, quota, payment-verification, or
-participant-activation behavior. ADR-044, Commerce Lifecycles, and
-Permissions now define the required Phase 1 lifecycle and authorization
-policy; W1-05 and W1-06 own endpoint and runtime follow-up.
+currently enforces evidence, payment-verification, participant-activation, or
+later reservation transitions. W3-01 through W3-06 provide Party persistence,
+explicit role-link validation, canonical `COMMON` Purchase persistence and
+authorized Operations reads, source-derived snapshots with checked
+per-participant totals, Event-then-Offering quota locking with 24-hour holds,
+and atomic public checkout with durable encrypted replay.
 
 ---
 
@@ -346,21 +357,14 @@ policy; W1-05 and W1-06 own endpoint and runtime follow-up.
 
 ### Purchasing
 
-- canonical Purchase aggregate;
-- Common Purchasing;
 - Saving Purchasing;
 - Giveaway Purchasing;
-- checkout;
-- purchase validation;
 - purchase confirmation;
 - purchase cancellation;
-- purchase history.
+- payment and later Purchase lifecycle transitions.
 
 ### Party and Participant
 
-- person and organization identity;
-- purchaser;
-- payer;
 - saving-account holder;
 - sponsor;
 - giveaway applicant;
@@ -513,7 +517,7 @@ Current replacements:
 
 ## Current Verification State
 
-Last recorded implementation verification: **2026-08-20**
+Last recorded implementation verification: **2026-08-21**
 
 The product/architecture and frontend-artifact alignment has been verified
 with:
@@ -554,26 +558,29 @@ recovery, minimized public projection, and logout. The fixture ended archived
 in the local development database, and temporary cookie/CSRF artifacts were
 securely deleted.
 
-Repository-wide validation was rerun for this migration but is not currently
-green. `make validate` stops at pre-existing formatter drift in four untouched
-Go files, and `go test ./...` fails because
-`TestSessionReturnsExpiryAndSortedPermissionsWithoutCaching` hard-codes an
-expiry of 2026-08-15, which is now in the past. `go vet ./...`,
-`go build ./...`, Compose configuration, the API container build, frozen-lockfile
-installation, and all root frontend lint, typecheck, test, and build checks pass.
+Repository-wide validation now passes: `make validate`, `go vet ./...`,
+`go test ./...`, `go build ./...`, Compose configuration, and the API container
+build are green. Four pre-existing Go formatter drifts were normalized, and the
+auth-session test fixture now uses a time-relative future expiry rather than an
+expired fixed date.
 
-Interactive browser verification has not been rerun after the Next.js
-migration because the configured browser-control runtime was unavailable in
-this workspace. Prior Vite browser evidence is not treated as Next.js parity
-evidence. Hydrated client navigation, visual/narrow-layout parity, actual
-service-worker registration and offline/update prompts, physical-keyboard tab
-order, 200-percent zoom, and cross-browser behavior remain explicit
-verification gaps. The migration task therefore remains active and is not
-archived. All Purchase behavior remains pending.
+Production Chrome smoke ran against both independently started Next apps.
+Storefront and Operations direct routes hydrated correctly; Storefront client
+navigation worked; and both PWA status components reported the shell ready for
+offline use. The browser-control evaluation surface does not expose direct
+ServiceWorker/CDP inspection, so actual worker registration is evidenced by the
+production UI while deterministic worker-policy tests continue to prove the
+cache allowlist and API/auth/network-only exclusions. The Next.js migration is
+complete and archived. W3-01 reusable Party identity, W3-02 explicit
+purchaser/payer/participant role mapping, W3-03 canonical `COMMON` Purchase
+persistence and Operations reads, and W3-05 transactional quota reservation
+are implemented and verified. W3-04 and W3-06 remain blocked on documented
+product decisions; no public checkout behavior is exposed.
 
 The API provides `/health`, PostgreSQL-backed `/ready`, graceful shutdown, the
 bounded guest Event/Offering catalogue, and transactional Operations
-Event/Offering commands. It has no Purchase command capability yet.
+Event/Offering commands. It has authorized Operations Purchase reads but no
+public Purchase command capability yet.
 
 ---
 
@@ -638,14 +645,21 @@ The following decisions remain unresolved:
    - delivery;
    - or a combination.
 
+8. Whether `offering_unit_price_minor` prices one whole Common Purchase or
+   each intended participant.
+
+9. The Common-Purchase reference format, stable guest idempotency caller scope,
+   and durable replay-retention/cleanup policy.
+
 These rules must not be invented during implementation.
 
 ---
 
 ## Current Risks
 
-1. Event/Offering APIs and both owning frontend flows exist, but all Purchase
-   flows remain unimplemented.
+1. Event/Offering APIs and their frontend flows exist. The Purchase persistence
+   and quota cores are verified, but public checkout is deliberately blocked on
+   unresolved financial and retry-policy decisions.
 2. The public limiter is intentionally per process. Ingress/CDN enforcement is
    still required for a uniform multi-replica rate limit and key-filling abuse.
 3. Migration/repository verification used only an explicitly disposable local
@@ -653,8 +667,8 @@ These rules must not be invented during implementation.
 4. OIDC-backed Operations sessions and Event/Offering permissions are enforced;
    operator/role administration and a real configured provider test identity
    remain deployment work.
-5. The domain model has public-query and Operations-command proof but no
-   Purchase vertical slice yet.
+5. The domain model has public-query, Operations-command, Purchase-persistence,
+   and quota-contention proof, but no end-to-end public checkout yet.
 6. Week 2 writes transactional outbox rows but has no background publisher,
    retry, cleanup, or backlog monitoring yet.
 7. CSP, HSTS, frame protection, same-origin API routing, and uniform
@@ -667,12 +681,9 @@ These rules must not be invented during implementation.
 
 ## Recommended Next Task
 
-Complete the outstanding interactive Next.js browser/PWA verification first.
-After migration acceptance is fully proven and the active task is archived,
-execute `.codex/plans/week-3/W3-01-implement-reusable-party-identity-records.md`.
-Reusable Party identity is the dependency-ready foundation for explicit
-purchaser, payer, and intended Sohibul Qurban relationships before the
-canonical Common Purchase task.
+Resolve the W3-04 total formula and W3-06 reference/idempotency/replay
+decisions, record them canonically, then execute the source-snapshot and
+atomic public-checkout slices.
 
 The recommended first slice remains:
 
@@ -694,16 +705,19 @@ Qurban Event
 ```text
 Repository bootstrap
 Week 2 Event and Offering discovery/administration
+Week 3 Party identity, role mapping, Purchase persistence, Operations reads,
+and reservation safety (W3-01, W3-02, W3-03, W3-05)
 ```
 
 ### In Progress
 
 ```text
 First qurban vertical slice
+W3-04 snapshot/total and W3-06 public checkout decision gates
 ```
 
 ### Not Started
 
 ```text
-Common Purchase vertical slice
+Public Common Purchase checkout and later Purchase lifecycle
 ```

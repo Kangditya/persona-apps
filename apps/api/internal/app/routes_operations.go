@@ -8,10 +8,11 @@ import (
     "github.com/Kangditya/persona-apps/apps/api/internal/offering"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/auth"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/cors"
+    "github.com/Kangditya/persona-apps/apps/api/internal/purchasing"
     "github.com/gin-gonic/gin"
 )
 
-func registerOperationsRoutes(router *gin.Engine, operationsAuth *auth.Service, eventOperations *event.OperationsHandler, offeringOperations *offering.OperationsHandler) {
+func registerOperationsRoutes(router *gin.Engine, operationsAuth *auth.Service, eventOperations *event.OperationsHandler, offeringOperations *offering.OperationsHandler, purchaseOperations *purchasing.OperationsHandler) {
     operations := router.Group(operationsAPIPrefix)
     if operationsAuth == nil {
         return
@@ -21,15 +22,21 @@ func registerOperationsRoutes(router *gin.Engine, operationsAuth *auth.Service, 
         Headers: []string{"Content-Type", "X-CSRF-Token", "Idempotency-Key", "X-Request-ID"}, Credentials: true,
     }))
     operationsAuth.RegisterRoutes(operations)
-    if eventOperations != nil && offeringOperations != nil {
+    if eventOperations != nil {
         eventOperations.RegisterRoutes(operations, operationsAuth)
+    }
+    if offeringOperations != nil {
         offeringOperations.RegisterRoutes(operations, operationsAuth)
+    }
+    if purchaseOperations != nil {
+        purchaseOperations.RegisterRoutes(operations, operationsAuth)
     }
     for _, path := range []string{
         "/auth/login", "/auth/callback", "/auth/session", "/auth/logout", "/events", "/events/:event_id",
         "/events/:event_id/publish", "/events/:event_id/activate", "/events/:event_id/suspend", "/events/:event_id/close",
         "/events/:event_id/archive", "/events/:event_id/offerings", "/offerings/:offering_id",
         "/offerings/:offering_id/publish", "/offerings/:offering_id/unavailable", "/offerings/:offering_id/archive",
+        "/purchases", "/purchases/:purchase_id",
     } {
         operations.OPTIONS(path, func(c *gin.Context) { c.Status(http.StatusNoContent) })
     }
