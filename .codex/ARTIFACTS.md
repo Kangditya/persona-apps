@@ -13,14 +13,9 @@ Use these current sources instead:
 - `docs/DECISIONS.md` for accepted and superseded decisions;
 - `.codex/CURRENT_STATE.md` for implemented and deferred state.
 
-## Current frontend direction
+The current frontend runtime is Next.js App Router with centralized URL
+builders and TanStack Query. The Go API remains authoritative for business
+rules, authorization, transactions, audit, idempotency, and contested state.
 
-The approved direction is React Router with Remix-style routing conventions in
-the existing Vite-served React SPAs, and TanStack Query for future remote
-API/server state. This does not add a Remix server runtime, SSR, server actions,
-routing code, a TanStack Query dependency, providers, queries, mutations, or
-cache behavior.
-
-The Go API remains authoritative for business rules, authorization,
-transactions, audit, idempotency, and contested state. Client cache data is not
-transactional truth.
+Use `MVP-DELIVERY-ROADMAP.md` for approved task sequencing. Do not add current
+guidance to this deprecated snapshot.

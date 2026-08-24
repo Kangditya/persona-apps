@@ -241,6 +241,17 @@ apps/operations-web
 
 The real-time dashboard is a read model over Event Operations and related domains.
 
+The Full Event-Day MVP treats the following as one vertical operational chain:
+
+```text
+3–4 Local Execution Days
+→ Field Teams, Shifts, Stations, and Readiness
+→ Livestock and Participant Check-In
+→ Slaughter Queue and Milestones
+→ Distribution
+→ Customer Status and Completion Evidence
+```
+
 ---
 
 ## 9. Distribution
@@ -265,13 +276,10 @@ apps/api/internal/distribution
 
 ### Open Scope
 
-The product must still confirm whether distribution covers:
-
-- Sohibul Qurban entitlement;
-- beneficiaries;
-- pickup;
-- delivery;
-- or a combination.
+The Full Event-Day MVP covers both explicit Sohibul Qurban entitlement and
+beneficiary distribution, with pickup or delivery, proof, exceptions, and
+completion. Route optimization and generalized ecommerce delivery remain out
+of scope.
 
 ---
 
@@ -392,6 +400,10 @@ apps/api/internal/
 
 ## 13. Delivery Roadmap
 
+The approved implementation sequence is maintained in
+`MVP-DELIVERY-ROADMAP.md`. Its 16-week boundary keeps Alternative Purchasing
+deferred while completing the full `COMMON` commerce-to-event-day journey.
+
 ### Phase 1 — Commerce Foundation
 
 ```text
@@ -480,6 +492,21 @@ The slice is complete only when it includes:
 - **Checkout model:** direct checkout with exactly one Offering per Purchase and
   no Shopping Cart.
 
+### Resolved for the Full Event-Day MVP
+
+- **Execution calendar:** exactly three or four inclusive local execution days
+  in an Event IANA timezone.
+- **Field organization:** event-scoped teams, members, shifts, stations,
+  handovers, incidents, and support escalation.
+- **Personal slaughter:** Event/participant-configurable self, proxy, or no
+  attendance; never inferred from financial eligibility.
+- **Distribution:** explicit Sohibul entitlement and beneficiary records,
+  pickup or delivery, proof, exceptions, and completion.
+- **Realtime:** polling first, then SSE for one-way value; no WebSocket without
+  a proven bidirectional need.
+- **Mobile/degraded mode:** responsive PWAs plus allowlisted, idempotent,
+  non-financial offline field milestones; sensitive commands stay online-only.
+
 ### Still Open
 
 1. **Saving price policy**
@@ -488,10 +515,6 @@ The slice is complete only when it includes:
 2. **Giveaway selection**
    Confirm whether the recipient is selected by sponsor, committee, manual approval, or random draw.
 
-3. **Personal slaughter flow**
-   Confirm whether each Sohibul Qurban performs the slaughter personally and therefore requires attendance and queue scheduling.
-
-4. **Distribution scope**
-   Confirm whether distribution covers beneficiary delivery, Sohibul Qurban entitlement, or both.
-
-These questions must be resolved before detailed design of their affected capability.
+These remaining questions affect only Saving and Giveaway. The Event-Day MVP
+requirements above are accepted baselines and must be revalidated, not
+reinvented, when each task becomes active.

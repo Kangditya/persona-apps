@@ -56,8 +56,13 @@ docs/
 ├── PRD.md
 ├── PRODUCT_MAP.md
 ├── ARCHITECTURE.md
-└── DECISIONS.md
+├── DECISIONS.md
+└── CONVENTIONS.md
 ```
+
+`MVP-DELIVERY-ROADMAP.md` is the approved 16-week Full Event-Day delivery plan.
+It coordinates tracker/task sequencing but does not replace canonical product
+or architecture documents.
 
 Agent execution context is expected under:
 
@@ -573,14 +578,16 @@ production UI while deterministic worker-policy tests continue to prove the
 cache allowlist and API/auth/network-only exclusions. The Next.js migration is
 complete and archived. W3-01 reusable Party identity, W3-02 explicit
 purchaser/payer/participant role mapping, W3-03 canonical `COMMON` Purchase
-persistence and Operations reads, and W3-05 transactional quota reservation
-are implemented and verified. W3-04 and W3-06 remain blocked on documented
-product decisions; no public checkout behavior is exposed.
+persistence and Operations reads, W3-04 source-derived snapshots and checked
+per-participant totals, W3-05 transactional quota reservation, and W3-06 atomic
+guest checkout/reference/token/outbox/encrypted replay are implemented and
+verified.
 
 The API provides `/health`, PostgreSQL-backed `/ready`, graceful shutdown, the
 bounded guest Event/Offering catalogue, and transactional Operations
-Event/Offering commands. It has authorized Operations Purchase reads but no
-public Purchase command capability yet.
+Event/Offering commands. It has authorized Operations Purchase reads and
+`POST /api/public/v1/purchases`; Storefront checkout and Operations Purchase
+screens remain unimplemented.
 
 ---
 
@@ -600,66 +607,47 @@ public Purchase command capability yet.
 12. Generic SaaS multitenancy is not part of the initial product.
 13. Dashboard requirements are near-real-time, not hard real-time.
 14. Product rules must remain adjustable while Figma and field requirements are still being refined.
+15. The Full Event-Day MVP must operate through exactly three or four inclusive
+    local Event execution days in an explicit IANA timezone.
+16. The supported mobile baseline is the responsive Next.js PWAs; a native
+    mobile application is not required.
 
 ---
 
 ## Open Product Decisions
 
-The following decisions remain unresolved:
+The following decisions remain unresolved outside the Full Event-Day
+`COMMON` MVP:
 
-1. Whether offerings represent:
-   - individual livestock;
-   - categories;
-   - packages;
-   - cattle shares;
-   - or a combination.
-
-2. Whether one checkout may contain multiple offerings.
-
-3. Whether Saving Purchasing locks:
+1. Whether Saving Purchasing locks:
    - the offering;
    - the price;
    - both;
    - or neither.
 
-4. How giveaway recipients are selected:
+2. How giveaway recipients are selected:
    - sponsor selection;
    - committee selection;
    - manual approval;
    - random draw;
    - combined process.
 
-5. Whether every Sohibul Qurban personally performs the slaughter.
-
-6. Whether personal slaughter requires:
-   - attendance registration;
-   - check-in;
-   - personal queue number;
-   - assigned slaughter station;
-   - proxy representation.
-
-7. Whether distribution covers:
-   - Sohibul Qurban entitlement;
-   - beneficiaries;
-   - pickup;
-   - delivery;
-   - or a combination.
-
-8. Whether `offering_unit_price_minor` prices one whole Common Purchase or
-   each intended participant.
-
-9. The Common-Purchase reference format, stable guest idempotency caller scope,
-   and durable replay-retention/cleanup policy.
+3. Payment gateway, advanced refund/transfer, audit retention, and advanced
+   certificate/document-provider choices.
 
 These rules must not be invented during implementation.
+
+ADR-048 through ADR-050 resolve the current Common Purchase role, price, and
+durable checkout rules. ADR-051 through ADR-055 resolve the Full Event-Day MVP
+execution calendar, teams/shifts/incidents, attendance modes, distribution
+scope, polling/SSE, mobile web, and bounded degraded-connectivity boundary.
 
 ---
 
 ## Current Risks
 
-1. Event/Offering APIs and their frontend flows exist. The Purchase persistence
-   and quota cores are verified, but public checkout is deliberately blocked on
-   unresolved financial and retry-policy decisions.
+1. Event/Offering APIs and frontend flows plus the Common Purchase backend
+   exist, but Storefront checkout and Operations Purchase screens remain.
 2. The public limiter is intentionally per process. Ingress/CDN enforcement is
    still required for a uniform multi-replica rate limit and key-filling abuse.
 3. Migration/repository verification used only an explicitly disposable local
@@ -667,23 +655,26 @@ These rules must not be invented during implementation.
 4. OIDC-backed Operations sessions and Event/Offering permissions are enforced;
    operator/role administration and a real configured provider test identity
    remain deployment work.
-5. The domain model has public-query, Operations-command, Purchase-persistence,
-   and quota-contention proof, but no end-to-end public checkout yet.
+5. Public checkout has transactional proof, but Payment, activation,
+   Livestock, Allocation, Slaughter, Distribution, customer event-day status,
+   and multi-team field flows remain unimplemented.
 6. Week 2 writes transactional outbox rows but has no background publisher,
    retry, cleanup, or backlog monitoring yet.
 7. CSP, HSTS, frame protection, same-origin API routing, and uniform
    multi-replica rate limiting depend on the eventual Next.js hosting/ingress
    configuration and are not proven in a deployed environment.
-8. Full WCAG, cross-browser, load/soak, penetration, disaster-recovery, audit
-   retention/export, and staging/production verification remain outside Week 2.
+8. Full WCAG, cross-browser/device, degraded-connectivity, 72–96-hour soak,
+   penetration, disaster-recovery, audit retention/export, and
+   staging/production verification remain unproven.
+9. Migrations contain operational foundation tables, but they are not evidence
+   of runtime Livestock, Allocation, Slaughter, or Distribution capability.
 
 ---
 
 ## Recommended Next Task
 
-Resolve the W3-04 total formula and W3-06 reference/idempotency/replay
-decisions, record them canonically, then execute the source-snapshot and
-atomic public-checkout slices.
+Execute W3-07 Storefront direct checkout form and confirmation next, then W3-08
+Operations Purchase list/detail and W3-09 cross-surface safety tests.
 
 The recommended first slice remains:
 
@@ -693,8 +684,16 @@ Qurban Event
 → Common Purchase
 → Payment Verification
 → Sohibul Qurban Activation
-→ Basic Operations Dashboard
+→ Livestock and Pen Assignment
+→ Allocation
+→ Slaughter Execution
+→ Distribution
+→ Customer Event-Day Status
+→ Realtime Multi-Team Mobile Operations
 ```
+
+The approved complete sequence, estimates, coverage, and release gates are in
+`MVP-DELIVERY-ROADMAP.md` and the live `Qurban MVP Project Tracker`.
 
 ---
 
@@ -705,19 +704,46 @@ Qurban Event
 ```text
 Repository bootstrap
 Week 2 Event and Offering discovery/administration
-Week 3 Party identity, role mapping, Purchase persistence, Operations reads,
-and reservation safety (W3-01, W3-02, W3-03, W3-05)
+Week 3 backend: Party identity, role mapping, Purchase persistence/reads,
+snapshots/totals, quota reservation, and atomic guest checkout (W3-01–W3-06)
 ```
 
 ### In Progress
 
 ```text
 First qurban vertical slice
-W3-04 snapshot/total and W3-06 public checkout decision gates
+W3-07 Storefront checkout and W3-08 Operations Purchase views
 ```
 
 ### Not Started
 
 ```text
-Public Common Purchase checkout and later Purchase lifecycle
+Storefront checkout UI, Payment/activation, and the Full Event-Day operational
+roadmap from teams/Livestock through controlled pilot
 ```
+
+---
+
+## Approved Planning State
+
+Last synchronized planning review: **2026-08-24**
+
+- `MVP-DELIVERY-ROADMAP.md` supersedes the former eight-week commerce-only
+  plan with a 16-week Full Event-Day MVP.
+- The live `Qurban MVP Project Tracker` contains 127 tasks through W16-09:
+  21 `Done`, W3-07 and W3-08 `Ready`, and 104 `Backlog`.
+- Planned effort is 723 hours. Actual Hours remain blank because no measured
+  time was supplied.
+- All unfinished tracker dependencies resolve to existing earlier task IDs and
+  all 106 unfinished rows have matching header-only drafts under
+  `.codex/plans/`.
+- Weeks 7–16 cover the 3–4-day execution calendar, field teams/shifts/incidents,
+  Livestock, Allocation, Slaughter, Distribution, customer Event-day status,
+  outbox/projections/polling/SSE, mobile/degraded field operation, resilience,
+  UAT, rehearsal, and controlled pilot.
+- Tracker `Weekly Plan`, `Scope`, and `Dashboard` formulas/formatting are aligned
+  to Week 16 and Tracker row 128.
+
+This is approved planning scope, not implementation evidence. Continue to use
+the `Not Implemented` and `Current Verification State` sections for runtime
+truth.

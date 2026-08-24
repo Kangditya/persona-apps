@@ -10,24 +10,29 @@ contracts, and canonical product and architecture documentation.
 
 Both web applications use Next.js 16 App Router with TanStack Query for remote
 API/server state. They keep separate public and Operations API boundaries. The
-Go API serves guest Event/Offering discovery and authenticated Operations
-Event/Offering commands; Purchase and later product capabilities remain
-deferred.
+Go API serves guest Event/Offering discovery, authenticated Operations
+Event/Offering commands, Party persistence, authorized Purchase reads, and
+atomic guest `COMMON` Purchase creation with captured snapshots, quota
+reservation, reference/token safety, outbox effects, and durable encrypted
+idempotency replay.
 
-Event/Offering configuration, PostgreSQL persistence, and guest catalogue
-discovery are implemented. The following remain deferred:
+Event/Offering configuration, PostgreSQL persistence, guest catalogue
+discovery, and the Week 3 Common Purchase backend are implemented. The
+following remain unimplemented:
 
-- Common, Saving, and Giveaway Purchasing;
-- Payment Verification and Funding;
-- Party, Participant, and Sohibul Qurban activation;
+- Storefront checkout and Operations Purchase screens;
+- Payment submission, Verification, and Sohibul Qurban activation;
 - Livestock and Allocation;
 - Slaughter and Distribution operations;
-- authenticated product workflows beyond Event/Offering administration;
+- field teams, shifts, readiness, check-in, incidents, and support escalation;
+- customer event-day status, notifications, and completion documents;
+- realtime projections, polling/SSE, and bounded degraded-connectivity field
+  replay;
 - reporting projections and operational dashboards;
 - payment gateway integration;
 - production deployment.
 
-The first planned business vertical slice is:
+The approved Full Event-Day MVP sequence is:
 
 ```text
 Qurban Event
@@ -35,8 +40,18 @@ Qurban Event
 → Common Purchase
 → Payment Verification
 → Sohibul Qurban Activation
-→ Basic Operations Dashboard
+→ Livestock and Pen Assignment
+→ Allocation
+→ Slaughter Execution
+→ Distribution
+→ Customer Event-Day Status
+→ Realtime Multi-Team Mobile Operations
 ```
+
+The approved planning baseline is
+[`MVP-DELIVERY-ROADMAP.md`](MVP-DELIVERY-ROADMAP.md). The old two-month plan is
+superseded because it deferred the event-day capabilities required to operate
+Eid al-Adha for 3–4 days.
 
 ## Applications
 
@@ -302,3 +317,10 @@ Canonical product and architecture documents are under `docs/`:
 - `docs/ARCHITECTURE.md`;
 - `docs/DECISIONS.md`;
 - `docs/CONVENTIONS.md`.
+
+Delivery and execution planning:
+
+- `MVP-DELIVERY-ROADMAP.md`;
+- `.codex/CURRENT_STATE.md`;
+- `.codex/plans/` for inactive header-only task drafts;
+- `.codex/TASK.md` for exactly one active reviewed task when present.

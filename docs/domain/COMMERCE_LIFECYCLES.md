@@ -4,6 +4,11 @@
 
 This document is the authoritative Phase 1 lifecycle policy.
 
+Operational Event, team, livestock, allocation, slaughter, distribution,
+incident, projection, and degraded-connectivity lifecycles are defined in
+`EVENT_OPERATIONS_LIFECYCLES.md`. Commerce eligibility remains independent of
+attendance and field execution.
+
 It applies ADR-042 and ADR-044 to migration 0005 for W1-05 OpenAPI and W1-06
 runtime work. It adds no runtime handler.
 

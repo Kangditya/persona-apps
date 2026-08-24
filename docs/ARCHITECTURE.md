@@ -587,6 +587,11 @@ Use separate command and query handlers where it improves clarity:
 
 The Operations dashboard requires near-real-time updates, not necessarily hard real-time guarantees.
 
+For the Full Event-Day MVP, this covers readiness, field-team assignments,
+livestock and allocation state, slaughter queues/stations, operational
+incidents, distribution progress, support escalation, and projection lag
+through all three or four Event execution days.
+
 ### Initial Approach
 
 1. Domain transaction commits.
@@ -599,6 +604,30 @@ The Operations dashboard requires near-real-time updates, not necessarily hard r
    - WebSocket only for genuinely bidirectional scenarios.
 
 SSE is preferred over WebSocket for one-way dashboard updates due to lower complexity.
+
+Commands never travel through dashboard projections or SSE. Each command uses
+the normal authenticated HTTP boundary, validates event/team/shift scope,
+applies idempotency and concurrency guards, commits authoritative state plus
+audit/outbox effects once, and only then changes a projection.
+
+Polling is sufficient for commerce dashboards and remains the fallback when
+SSE is unavailable. Event-day SSE supports reconnection, `Last-Event-ID`, and
+missed-event recovery from a durable projection cursor. WebSocket remains
+deferred until a bidirectional requirement cannot be met through ordinary HTTP
+commands plus one-way updates.
+
+### Mobile and Degraded Connectivity
+
+The Storefront and Operations Next.js PWAs are the mobile baseline. They must
+remain usable on representative mobile browsers and offer manual code entry
+when native QR/barcode detection is absent.
+
+The server remains authoritative. A device-local queue may hold only an
+explicitly allowlisted non-financial field milestone, with bounded retention,
+no unnecessary personal data, an idempotency key, visible pending state,
+operator-confirmed replay, and conflict presentation. Payment, evidence,
+identity, permission, Event configuration, allocation-capacity overrides, and
+other sensitive mutations remain online-only.
 
 ### Event Examples
 
@@ -694,6 +723,28 @@ participant.read
 dashboard.read
 audit.read
 admin.manage
+```
+
+Full Event-Day MVP additions:
+
+```text
+team.read
+team.manage
+readiness.read
+readiness.manage
+livestock.read
+livestock.manage
+allocation.read
+allocation.manage
+slaughter.read
+slaughter.manage
+distribution.read
+distribution.manage
+incident.read
+incident.manage
+support.read
+support.manage
+projection.read
 ```
 
 Authorization must be enforced in application services or dedicated policy components, not only in HTTP middleware.
@@ -1030,20 +1081,18 @@ Core purchasing, payment eligibility, quota, and allocation should remain transa
 
 ## 23. Architecture Decisions Required
 
-ADR-040 and ADR-043 resolve migration tooling, HTTP routing, Phase 1
-Storefront access, and Operations authentication. Remaining decisions include:
+ADR-040 through ADR-050 resolve the current platform and Common Purchase
+baseline. ADR-051 through ADR-055 resolve Full Event-Day MVP duration, teams,
+attendance, distribution, realtime/mobile, and degraded-connectivity
+boundaries. Remaining decisions include:
 
 1. Public identifier strategy.
 2. Money representation.
-3. Outbox and background job implementation.
-4. API contract generation.
-5. Dashboard update transport: polling versus SSE.
-6. Object storage provider.
-7. Payment gateway integration.
-8. Event configuration versioning.
-9. Audit data retention.
-10. Offline or degraded event-day operation.
-11. Conditions for backend service extraction.
+3. API contract generation.
+4. Object storage provider.
+5. Payment gateway integration.
+6. Audit data retention.
+7. Conditions for backend service extraction.
 
 ---
 
@@ -1075,16 +1124,17 @@ apps/api
 
 Recommended next architecture work:
 
-1. establish transaction boundaries and explicit module registration around
-   the Gin route groups;
-2. implement the accepted OIDC session, CSRF, permissions, and Purchase-token
-   foundations;
-3. implement Event, Identity, Offering, and Purchasing foundations;
-4. define OpenAPI conventions;
-5. establish outbox and audit foundations;
-6. deliver the first vertical slice:
-   common purchase → payment verification → Sohibul Qurban activation;
-7. add operations dashboard projections after transactional records exist.
+1. finish Storefront and Operations Common Purchase screens and tests;
+2. implement Payment verification and Sohibul Qurban activation;
+3. finish the mobile Storefront and Operations commerce control planes;
+4. implement Event execution days, field teams, shifts, readiness, check-in,
+   incidents, and support escalation;
+5. deliver Livestock, Allocation, Slaughter, Distribution, and customer
+   event-day vertical slices in that order;
+6. implement the PostgreSQL outbox worker and rebuildable operational
+   projections, then polling and SSE;
+7. add bounded degraded-connectivity field replay, resilience evidence, UAT,
+   a 72–96-hour soak, a 3–4-day rehearsal, and a controlled pilot.
 
 This sequence builds executable product capability while preserving the option to refine Figma flows and operational requirements.
 
@@ -1173,3 +1223,30 @@ Each vertical slice should include:
 - observability.
 
 This approach validates domain boundaries before expanding them.
+
+---
+
+## 29. Full Event-Day Runtime Topology
+
+```text
+Storefront Next.js PWA                    Operations Next.js PWA
+  purchase-token status                    authenticated field commands
+  schedule / notifications                 teams / shifts / mobile workflows
+            │                                           │
+            └────────────── HTTPS / JSON ───────────────┘
+                                │
+                         Go Modular Monolith
+      Event · Purchasing · Participant · Livestock · Allocation
+          Slaughter · Distribution · Incident · Notification
+                                │
+                    PostgreSQL transactional truth
+              histories · audit · idempotency · outbox
+                                │
+                  PostgreSQL-backed worker/projections
+                                │
+               bounded polling + SSE one-way read updates
+```
+
+The topology is one deployment boundary unless measured evidence requires
+separation. It adds no broker, Redis, microservice, native mobile application,
+or WebSocket to the MVP.

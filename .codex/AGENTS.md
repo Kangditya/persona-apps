@@ -49,6 +49,10 @@ docs/CONVENTIONS.md
 .codex/TASK.md
 ```
 
+`MVP-DELIVERY-ROADMAP.md` is the approved delivery-plan baseline. It does not
+override canonical product or architecture decisions and is not implementation
+evidence.
+
 Document responsibilities:
 
 | Document | Responsibility |
@@ -474,6 +478,12 @@ Owns:
 - incidents;
 - completion.
 
+For the Full Event-Day MVP, one Event has exactly three or four inclusive local
+execution days in an explicit IANA timezone. Field teams, memberships, shifts,
+station/location assignments, readiness, handovers, incidents, and support
+escalation are Event-scoped records. Attendance supports `SELF`, `PROXY`, or
+`NONE` and never determines financial eligibility.
+
 Dashboards are projections over authoritative event and operational records.
 
 ### Distribution
@@ -487,6 +497,10 @@ Owns:
 - delivery;
 - proof;
 - completion.
+
+The Full Event-Day MVP covers both explicit Sohibul Qurban entitlement and
+beneficiary portions, with pickup or delivery, proof, exceptions, and
+completion. Route optimization remains out of scope.
 
 ### Identity & Access
 
@@ -914,6 +928,22 @@ Rules:
 3. Dashboard state must not become the authoritative source.
 4. Commands must operate against transactional modules.
 5. Do not add WebSocket infrastructure merely for visual freshness.
+6. Full Event-Day SSE must reconnect from `Last-Event-ID` or an equivalent
+   durable cursor and retain polling as fallback.
+7. Commands continue through authenticated HTTP APIs and revalidate
+   authoritative state; they never mutate through a projection or stream.
+
+### Mobile and degraded-connectivity rules
+
+1. The responsive Next.js PWAs are the MVP mobile clients.
+2. Every QR/barcode-assisted critical flow has manual code entry fallback.
+3. Ordinary service-worker caching excludes API/authentication/business data.
+4. Only ADR-055 allowlisted non-financial field milestones may queue locally.
+5. Queued milestones use minimum non-sensitive payloads, bounded retention,
+   idempotency, visible pending state, operator-confirmed replay, and conflict
+   presentation.
+6. Payment, evidence, identity, permission, Event/team configuration, capacity
+   override, credentials, and other sensitive commands remain online-only.
 
 ---
 

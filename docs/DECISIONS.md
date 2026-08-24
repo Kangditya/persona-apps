@@ -1629,3 +1629,151 @@ need a separate approved operational policy.
   retention is invalid.
 - Purchase tracking, cancellation, evidence, payment, token recovery, and
   background cleanup remain separate lifecycle work.
+
+---
+
+## ADR-051: Model one Eid Event as three or four local execution days
+
+**Status:** Accepted
+
+### Decision
+
+An executable Qurban Event declares one IANA timezone and exactly three or four
+inclusive local execution dates. An execution day owns operating windows and
+may contain sessions, shifts, station assignments, handovers, readiness gates,
+and recovery periods. UTC timestamps remain the stored instants; local dates
+and timezone are preserved as the operational calendar.
+
+Registration windows and Event lifecycle status remain separate from the
+execution calendar. Closing a shift or execution day does not silently close
+the Event or discard unfinished work.
+
+### Consequences
+
+- Event-day records and APIs carry Event and execution-day scope.
+- Validation rejects fewer than three, more than four, duplicate, unordered,
+  or timezone-invalid execution dates.
+- A later change to duration requires an explicit product decision and
+  additive schema/contract change.
+- Release evidence includes a continuous 72–96-hour soak and a complete
+  three-or-four-day rehearsal.
+
+---
+
+## ADR-052: Treat field teams, shifts, assignments, and incidents as event-scoped operations
+
+**Status:** Accepted
+
+### Decision
+
+Livestock, Allocation, Slaughter, Distribution, Management, and Support teams
+are first-class Event-scoped records. Membership, shift, station/location
+assignment, handover, readiness, and incident ownership are explicit. A
+frontend team selection never grants authority; backend permissions and the
+active Event/team/shift assignment authorize each field command.
+
+Operational incidents record severity, affected work, owner, escalation,
+resolution, and handover state. Support diagnostics expose safe correlation,
+connectivity, queue, projection-lag, and replay state without credentials or
+unnecessary participant data.
+
+### Consequences
+
+- Team, membership, shift, assignment, handover, and incident storage uses an
+  additive migration; historical migrations are not edited.
+- Privileged membership, assignment, handover, incident, and support actions
+  are audited and version/conflict protected.
+- Volunteer payroll, generic workforce management, and organization-wide HR
+  remain out of scope.
+
+---
+
+## ADR-053: Make Sohibul Qurban attendance configurable and independent of eligibility
+
+**Status:** Accepted
+
+### Decision
+
+Purchase eligibility and Sohibul Qurban activation never imply attendance or
+personal slaughter. Each Event may enable participant attendance, and each
+Sohibul Qurban uses one explicit mode when applicable:
+
+```text
+SELF
+PROXY
+NONE
+```
+
+`SELF` and `PROXY` may require check-in and queue/station coordination. `NONE`
+does not create a participant queue obligation. Changing an attendance mode
+requires authorization, reason, history, and conflict protection.
+
+### Consequences
+
+- Payment verification can activate Sohibul Qurban without an attendance
+  decision.
+- Storefront exposes only the token-scoped participant's attendance and safe
+  progress state.
+- Proxy identity, where collected, follows minimum-data and retention rules.
+
+---
+
+## ADR-054: Support explicit Sohibul entitlement and beneficiary distribution
+
+**Status:** Accepted
+
+### Decision
+
+Distribution is a Qurban operational domain, not ecommerce fulfillment. It
+supports both Sohibul Qurban entitlement and beneficiary portions. Each record
+identifies its subject and portion/entitlement, uses `PICKUP` or `DELIVERY`, and
+tracks preparation, readiness, collection/delivery, proof, exception, and
+completion.
+
+Distribution begins only after the relevant slaughter and preparation guards
+pass. Beneficiary data is Operations-only unless an explicit Purchase-token
+scope authorizes the corresponding customer view.
+
+### Consequences
+
+- Beneficiary, portion, proof, and method storage is additive to the current
+  minimal distribution schema.
+- Pickup and delivery use the same authoritative lifecycle but may have
+  different required evidence.
+- Route optimization, generalized courier management, and public beneficiary
+  lookup remain out of scope.
+
+---
+
+## ADR-055: Use online-authoritative mobile PWAs with polling, SSE, and bounded field replay
+
+**Status:** Accepted
+
+### Decision
+
+The existing responsive Next.js Storefront and Operations PWAs are the MVP
+mobile clients. The Go API and PostgreSQL remain authoritative.
+
+Operational reads use bounded polling first. High-value one-way event updates
+may use SSE with durable projection cursors, `Last-Event-ID`, reconnection, and
+missed-event recovery. WebSocket is not part of the MVP.
+
+A device-local queue may store only explicitly allowlisted, non-financial
+field milestones with bounded retention, minimum non-sensitive payload,
+idempotency keys, visible pending state, operator-confirmed replay, and conflict
+presentation. Payment, evidence, identity, authorization, Event/team
+configuration, capacity overrides, and other sensitive commands remain
+online-only.
+
+Native QR/barcode detection is an optional browser enhancement. Manual code
+entry is always available.
+
+### Consequences
+
+- Dashboard projections are rebuildable and never command truth.
+- Service workers continue to exclude API/auth responses from ordinary runtime
+  caching; the approved field queue is a separate, narrowly owned mechanism.
+- Multi-device and reconnect tests must prove duplicate-free replay and visible
+  conflict behavior.
+- A native mobile application, Redis, message broker, microservice, or
+  WebSocket requires measured need and a separate accepted decision.

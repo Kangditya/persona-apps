@@ -196,7 +196,10 @@ migration must be added rather than editing these files.
 Migration 0006 hardens existing Event/Offering tables with bounds required by
 the API's exact-integer contract. Future hardening may still be required after
 real command flows establish policies for quota reservation, price locking,
-giveaway selection, distribution entitlement, and authentication scope.
+giveaway selection, Event-day attendance, allocation, Distribution, projection
+recovery, and authentication scope. ADR-051 through ADR-055 fix the Full
+Event-Day target policies; implementation still requires measured query and
+constraint verification.
 
 ### Index migrations
 
@@ -235,8 +238,8 @@ API startup does not run migrations.
 | Multiple offerings in one checkout | One purchase has one offering; no cart or purchase-item table.                                                       | Multi-offering checkout.                        |
 | Saving price/target lock           | Saving stores target amount and optional offering, without lock history.                                             | Saving conversion implementation.               |
 | Giveaway selection                 | Application/assignment status only; selection policy is not stored.                                                  | Giveaway workflow implementation.               |
-| Personal slaughter/attendance      | Generic slaughter records only; no participant queue/attendance model.                                               | Field workflow confirmation.                    |
-| Distribution scope                 | Minimal purchase/participant status record; no beneficiaries, portions, proof, or route model.                       | Distribution requirements.                      |
+| Personal slaughter/attendance      | ADR-053 fixes configurable `SELF`, `PROXY`, or `NONE`; current schema still lacks attendance/history.                | Planned additive Event-day migration.           |
+| Distribution scope                 | ADR-054 fixes Sohibul entitlement plus beneficiary pickup/delivery/proof; current table remains minimal.             | Planned additive Distribution migration.        |
 | Authentication/authorization       | Session and Purchase-token hashes are stored; runtime OIDC, permissions, scopes, and administration remain deferred. | W1-06 operations access implementation.         |
 | Migration tooling                  | `golang-migrate/migrate/v4` consumes the existing SQL pairs; CLI and Make targets are explicit.                      | Dirty recovery commands and disposable-DB CI.   |
 
@@ -250,3 +253,22 @@ by the current schema. No Compose file or API startup path was changed.
 Migration `0006` is an additive follow-up: it does not edit historical pairs,
 adds no seed data, and derives its single new index from an observed
 availability query plan.
+
+## Planned additive Event-day migration sequence
+
+No SQL file is created by this planning update. Active implementation tasks
+must inspect the live schema and choose the next unused versions while
+preserving this dependency order:
+
+| Planned unit              | Scope                                                                                                                                              | Depends on                                             | Rollback boundary                                                                               |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Event execution and teams | Event timezone, 3–4 execution days, field teams/memberships, shifts, assignments, handovers, readiness, attendance, incidents, histories, indexes. | Current Event, locations, operators, Sohibul Qurban.   | Drop only the new Event-day/team records after proving no dependent Livestock/Slaughter data.   |
+| Livestock hardening       | Add only missing execution-day/location/version/history constraints needed by the implemented lifecycle.                                           | Event execution and teams; existing livestock schema.  | Remove only additive hardening; never drop historical livestock tables in a shared environment. |
+| Allocation hardening      | Capacity/version/history/index changes proven by transactional allocation queries.                                                                 | Eligible Purchase/Sohibul, Livestock.                  | Block rollback while new Allocation state/history depends on the additions.                     |
+| Slaughter execution       | Session/day/team/shift/station linkage, attendance/check-in linkage, queue history, incident linkage, constraints, indexes.                        | Event execution, teams, Livestock, Allocation.         | Block rollback while execution records exist unless a separately verified recovery exists.      |
+| Distribution completion   | Entitlements, beneficiaries, portions, pickup/delivery method, proof metadata, failure/reassignment/completion history, constraints, indexes.      | Slaughter completion and existing distribution schema. | Remove only additive records after backup/recovery proof.                                       |
+| Projection checkpoints    | Durable projection cursors/checkpoints and worker backlog/dead-letter metadata where existing outbox fields are insufficient.                      | Authoritative domain/outbox events.                    | Projection storage is rebuildable, but rollback must not alter source domain records.           |
+
+Every pair remains additive, bounded, separately reversible, and validated by
+fresh-database up/down/up plus compatibility tests. Historical migrations 0001
+through 0006 remain unchanged.

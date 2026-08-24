@@ -2,13 +2,14 @@
 
 ## Scope and evidence
 
-This is the proposed transactional model for the current Qurban product scope.
-The repository currently has no applied business tables, ORM models, or
-business queries. The four numbered migration pairs and explicit seed runner
-now exist, but no migration has been applied to staging or production. Every
-business table below is therefore classified as `NEW`; there are no `EXISTING`
-or `CHANGE` tables. The `schema_migrations` and `schema_seeds` lifecycle tables
-are tool metadata and are intentionally outside this business ERD.
+This document describes the transactional model for the current Qurban product
+scope. Six numbered migration pairs and the explicit seed runner exist. Event,
+Offering, Party, Common Purchase, quota, audit, outbox, idempotency, and
+Operations-session tables have runtime consumers; Livestock, Allocation,
+Slaughter, and Distribution are schema foundations without matching runtime
+modules. No migration has been proven against staging or production. The
+`schema_migrations` and `schema_seeds` lifecycle tables are tool metadata and
+are intentionally outside this business ERD.
 
 The model is grounded in:
 
@@ -23,9 +24,9 @@ The model is grounded in:
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Database                   | PostgreSQL 18 in `infrastructure/compose.yaml`; Go uses `pgx/v5` through `database/sql`.                                                                                                                                                 |
 | Migration framework        | `golang-migrate/migrate/v4` consumes numbered standalone SQL pairs through `apps/api/cmd/db`; API startup remains migration-free.                                                                                                        |
-| Schema                     | PostgreSQL `public` schema; no existing schema convention to preserve.                                                                                                                                                                   |
+| Schema                     | PostgreSQL `public` schema, established by migrations 0001–0006.                                                                                                                                                                         |
 | Naming                     | Lowercase plural `snake_case` table names and lowercase `snake_case` columns.                                                                                                                                                            |
-| Primary keys               | UUID primary keys with PostgreSQL `gen_random_uuid()` defaults. This is a proposed baseline, not an existing convention.                                                                                                                 |
+| Primary keys               | UUID primary keys with PostgreSQL `gen_random_uuid()` defaults. This is the established business-schema convention.                                                                                                                      |
 | Public/business references | Human-readable unique references are used where operators or participants need lookup (`purchase_ref`, `account_ref`, and similar). UUIDs remain the stable API identifiers.                                                             |
 | Foreign keys               | Explicit foreign keys. Event-scoped child references carry `event_id`; composite foreign keys are used where the relationship must remain within the same event.                                                                         |
 | Time                       | `timestamptz` values, stored in UTC by PostgreSQL/application convention. Dates that have no time-of-day are deferred to the owning workflow.                                                                                            |
@@ -1056,40 +1057,38 @@ Every retry-sensitive vertical slice must test:
 
 ## Current, target, and deferred state
 
-### EXISTING
+### Current runtime-consumed schema
 
-None. The repository has only migration and query directory placeholders; it
-does not contain a persisted table to preserve.
+Current source consumes the applicable parts of `operator_users`,
+`operator_sessions`, `parties`, `qurban_events`, `offerings`, `purchases`,
+`purchase_participants`, `purchase_status_history`, `quota_reservations`,
+`audit_log`, `outbox_events`, and `idempotency_records` for authentication,
+Event/Offering, Party, Common Purchase, quota, audit, outbox, and replay flows.
 
-### CHANGE
+### Scripted foundation without matching runtime behavior
 
-None.
+Saving, Giveaway, Payment/ledger, Sohibul Qurban activation, Livestock,
+Allocation, Slaughter, and Distribution tables exist in migrations but do not
+by themselves prove implemented commands, queries, contracts, or screens.
 
-### NEW and scripted
+### Planned additive Event-day changes
 
-`operator_users`, `parties`, `qurban_events`, `event_locations`, `offerings`,
-`saving_accounts`, `giveaway_programs`, `giveaway_applications`,
-`giveaway_assignments`, `purchases`, `purchase_status_history`,
-`sohibul_qurban`, `sohibul_qurban_status_history`, `payment_records`,
-`payment_status_history`, `financial_ledger_entries`, `livestock`,
-`livestock_inspections`, `livestock_status_history`,
-`livestock_location_history`, `allocations`, `allocation_status_history`,
-`slaughter_sessions`, `slaughter_stations`, `slaughter_records`,
-`distribution_records`, `distribution_status_history`, `audit_log`,
-`outbox_events`, and `idempotency_records`.
+ADR-051 through ADR-055 require the execution-day, team, shift, assignment,
+handover, readiness, attendance, incident, entitlement/beneficiary/proof, and
+projection-checkpoint records listed in the Full Event-Day additive target.
+Active tasks must add new migration pairs; they must not modify migration 0001
+through 0006.
 
-### DEFERRED
+### Deferred beyond the Full Event-Day MVP
 
-- `party_contacts`, identity verification evidence, and authentication/session tables;
-- roles, permissions, and event/location authorization-scope tables;
-- offering variants, package/share composition, cart/checkout items, and inventory-like availability counters;
-- explicit saving schedules, price-lock snapshots, transfers/refunds policy tables, and automated reminders;
-- structured giveaway eligibility criteria and recipient-selection records;
-- participant documents/object-storage metadata;
-- personal slaughter attendance, proxy, queue entitlement, and station assignment rules;
-- distribution beneficiaries, portion/entitlement quantities, delivery addresses, proof, and routing;
-- notification delivery attempts and provider webhook inboxes;
-- rebuildable dashboard/reporting projections;
+- richer contact/identity verification, automatic deduplication, and account
+  merge workflows;
+- generalized role/permission administration and organization-wide workforce
+  or HR records;
+- offering variants, cart/checkout items, and alternative pricing modes;
+- Saving schedules/price locks/transfers/refunds and Giveaway-selection policy;
+- advanced document generation and provider-specific webhook inboxes;
+- route optimization and generalized courier management;
 - generic organization/tenant columns and multi-tenant policy tables.
 
 ## Design rationale
@@ -1153,6 +1152,38 @@ table to every future module. Consumers must be idempotent.
 
 The schema intentionally does not decide offering/package composition, cart
 support, saving price locking, saving transfer/refund policy, giveaway
-selection, personal slaughter attendance, or distribution entitlement and
-beneficiary rules. Those decisions require product/field confirmation before
-their deferred tables or constraints are added.
+selection, advanced document generation, route optimization, or generalized
+workforce management. Those decisions require separate product confirmation.
+
+## Full Event-Day MVP additive target
+
+ADR-051 through ADR-055 require additive schema work. This section is a design
+target only; it does not rename or modify historical migration files.
+
+| Target record               | Purpose and critical relationships                                                                                      |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `event_execution_days`      | Event timezone-local date and ordered day number; exactly three or four per executable Event.                           |
+| `field_teams`               | Event-scoped Livestock, Allocation, Slaughter, Distribution, Management, or Support team.                               |
+| `field_team_memberships`    | Operator-to-team membership with active interval and status.                                                            |
+| `field_shifts`              | Execution-day operating interval, owning team, status, and version.                                                     |
+| `field_assignments`         | Shift/team assignment to Event location or slaughter station, with release/reassignment history.                        |
+| `shift_handovers`           | Outgoing/incoming owner, unfinished work, blocking incidents, acknowledgement, and timestamp.                           |
+| `operational_readiness`     | Event/day/location/team readiness subject, result, reason, waiver, actor, and history.                                  |
+| `participant_attendance`    | Event/day Sohibul mode `SELF`, `PROXY`, or `NONE`, check-in status, optional minimum-data proxy reference, and history. |
+| `operational_incidents`     | Severity, affected subject, owner team/operator, escalation, resolution, handover, status, and version.                 |
+| `distribution_entitlements` | Explicit Sohibul or beneficiary subject, portion/entitlement, method, privacy scope, and lifecycle.                     |
+| `distribution_proofs`       | Append-oriented pickup/delivery proof metadata and digest; no file bytes in PostgreSQL.                                 |
+| `projection_checkpoints`    | Projection name, last durable outbox/event cursor, source timestamp, rebuild/lag state, and error metadata.             |
+
+The existing `livestock`, location history, `allocations`, slaughter, minimal
+distribution, audit, outbox, and idempotency tables remain foundations. Active
+implementation tasks must re-inspect the actual schema and add only the columns,
+constraints, histories, or tables required by the approved lifecycle; they must
+not rewrite migrations 0001 through 0006.
+
+### Offline queue boundary
+
+The device-local field queue is not a PostgreSQL business aggregate. The server
+stores only normal idempotency/replay and domain results after a queued command
+reaches the API. No table stores browser credentials, raw queue payloads, or a
+second source of operational truth.

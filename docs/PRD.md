@@ -776,9 +776,6 @@ The following decisions remain intentionally open:
 - giveaway eligibility and selection workflow;
 - livestock procurement ownership;
 - cattle share and other package allocation rules;
-- participant attendance requirements;
-- event-day offline or low-connectivity mode;
-- distribution entitlement model;
 - certificate generation;
 - payment gateway selection;
 - notification channels;
@@ -790,6 +787,12 @@ Phase 1 common purchasing has resolved Offering shape, direct checkout, quota
 reservation, payment evidence, and participant activation through ADR-042.
 Those decisions do not define later Saving, Giveaway, refund, payment-gateway,
 or livestock-allocation policy.
+
+The Full Event-Day MVP resolves execution duration/timezone, field teams,
+attendance modes, distribution scope, polling/SSE transport, mobile web, and
+bounded degraded-connectivity behavior in Section 24 and ADR-051 through
+ADR-055. Minimal completion evidence and certificates are included; advanced
+document generation remains open.
 
 These decisions should be captured through updates to this PRD or Architecture Decision Records.
 
@@ -967,7 +970,10 @@ Distribution
 └── Distribution Completion
 ```
 
-Final distribution rules remain subject to operational discovery.
+The Full Event-Day MVP supports both Sohibul Qurban entitlement and beneficiary
+distribution. Each distribution record declares its subject, portion or
+entitlement, method (`PICKUP` or `DELIVERY`), proof requirements, exceptions,
+and completion status. Route optimization remains out of scope.
 
 ### 21.9 Identity & Access
 
@@ -1006,6 +1012,11 @@ Administration & Reporting
 ---
 
 ## 22. Revised Delivery Phases
+
+The Full Event-Day MVP includes Commerce Foundation, Livestock and Allocation,
+Event-Day Operations, and Distribution and Reporting. Alternative Purchasing
+remains a later expansion; it is not a release prerequisite for the `COMMON`
+journey.
 
 ### Phase 1 — Commerce Foundation
 
@@ -1060,6 +1071,23 @@ Administration & Reporting
 - One direct checkout selects exactly one Offering; there is no Shopping Cart
   or purchase-item aggregate.
 
+### Resolved for the Full Event-Day MVP
+
+- An Event declares an IANA timezone and exactly three or four inclusive local
+  execution days. Each day may contain sessions, team shifts, station
+  assignments, handovers, and recovery periods.
+- Sohibul Qurban attendance is configurable per Event and participant. The
+  supported modes are self-attendance, proxy attendance, or no attendance;
+  attendance never determines Purchase payment eligibility.
+- Distribution supports explicit Sohibul Qurban entitlements and beneficiary
+  records, using pickup or delivery with traceable proof and completion.
+- The responsive Storefront and Operations PWAs are the mobile baseline.
+  Authoritative commands remain server-validated; only an explicit allowlist of
+  non-financial field milestones may queue during degraded connectivity.
+- Operations uses bounded polling first and Server-Sent Events for high-value
+  one-way updates. WebSocket remains deferred until a bidirectional requirement
+  is proven.
+
 ### Still Open
 
 The following requirements remain unresolved and must be verified before their
@@ -1067,7 +1095,71 @@ affected implementation:
 
 1. Whether saving plans lock the offering and price at creation.
 2. Whether giveaway recipients are selected by sponsor, committee, manual approval, or random draw.
-3. Whether each Sohibul Qurban performs the slaughter personally and therefore requires individual attendance and queue scheduling.
-4. Whether distribution includes beneficiary delivery, Sohibul Qurban entitlement, or both.
+   The remaining questions apply only to Saving and Giveaway. Event-day execution,
+   attendance, distribution, realtime transport, and degraded-connectivity
+   baselines are fixed above and in ADR-051 through ADR-055.
 
-These decisions should update the PRD, Product Map, and relevant ADRs before their affected phase enters BUILD.
+---
+
+## 24. Full Event-Day MVP Requirement Baseline
+
+### 24.1 Multi-Day Event Execution
+
+- Every executable Event has exactly three or four inclusive local execution
+  days in an explicit IANA timezone.
+- Operators configure operating windows, sessions, team shifts, station
+  assignments, handovers, readiness gates, and recovery periods per day.
+- The platform must remain authoritative and auditable across day boundaries;
+  closing a shift or day must not erase unfinished work.
+
+### 24.2 Field Teams and Technical Support
+
+- Livestock, Allocation, Slaughter, Distribution, Management, and Support teams
+  are event-scoped operational records with authorized memberships.
+- Team members receive explicit shift and station assignments; no frontend-only
+  team selection grants authority.
+- Incidents record severity, owner, affected work, escalation, resolution, and
+  handover status.
+- Support operators can inspect safe request, connectivity, projection-lag, and
+  queued-command diagnostics without receiving credentials or unnecessary
+  participant data.
+
+### 24.3 Livestock-to-Distribution Traceability
+
+- Every livestock unit is traceable through intake, inspection, readiness,
+  pen/location history, allocation, slaughter queue/execution, and completion.
+- Every active Sohibul Qurban is traceable from eligible Purchase to Allocation,
+  applicable attendance/proxy status, slaughter result, and distribution
+  entitlement or beneficiary outcome.
+- Capacity, reassignment, contested queue transitions, and distribution
+  completion remain transactionally safe, versioned, and auditable.
+
+### 24.4 Customer Event-Day Journey
+
+- A Purchase-token-scoped Storefront view exposes schedule/instructions,
+  attendance when applicable, privacy-safe queue/slaughter milestones,
+  distribution status, notifications, and final evidence/documents.
+- Storefront never exposes team membership, internal notes, beneficiary data
+  outside the token scope, exact internal queue topology, or privileged fields.
+
+### 24.5 Realtime, Mobile, and Degraded Connectivity
+
+- The operational freshness target remains generally under ten seconds.
+- Dashboards derive from rebuildable projections and display freshness, lag,
+  errors, and reconnection state.
+- Polling is the baseline; SSE adds one-way updates with reconnect and missed
+  event recovery. Commands continue through ordinary authenticated HTTP APIs.
+- Critical field screens support representative mobile browsers and manual code
+  entry when native QR/barcode detection is unavailable.
+- A device-local queue may contain only approved non-financial field milestones
+  with bounded retention, idempotency keys, visible pending state, replay, and
+  conflict handling. Payment, configuration, authorization, identity, and
+  sensitive evidence mutations remain online-only.
+
+### 24.6 Release Gate
+
+The Full Event-Day MVP is not releasable from commerce-only evidence. Release
+requires the complete criteria in `MVP-DELIVERY-ROADMAP.md`, including
+multi-team execution, mobile/degraded-connectivity verification, backup and
+projection recovery, a 72–96-hour soak, role-complete UAT, a 3–4-day rehearsal,
+runbooks, and a controlled pilot with recorded go/no-go evidence.

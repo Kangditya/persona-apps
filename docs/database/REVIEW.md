@@ -1,5 +1,11 @@
 # Database Design Review
 
+> Historical review snapshot. This file records the database-design review at
+> the time migrations 0001–0006 were introduced. It is not current product,
+> implementation, or delivery status. Use `ERD.md`, `MIGRATION_PLAN.md`,
+> `.codex/CURRENT_STATE.md`, ADR-051 through ADR-055, and
+> `MVP-DELIVERY-ROADMAP.md` for current boundaries.
+
 ## Outcome
 
 The repository-grounded database design is implemented as documentation,
@@ -8,21 +14,21 @@ No migration was applied to staging or production.
 
 ## Required report
 
-| Item                                 | Result                                                                                                                                                                                                                                                                   |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Database engine / dialect discovered | PostgreSQL; Compose uses `postgres:18-alpine`, and Go uses `pgx/v5` with `database/sql`.                                                                                                                                                                                 |
-| Migration framework discovered       | `golang-migrate/migrate/v4`, selected because it consumes paired SQL files and supports PostgreSQL locking/version state.                                                                                                                                                |
-| Existing schema reused               | None. No business tables, SQL schema, ORM, query models, seeds, or migration history exist.                                                                                                                                                                              |
-| New tables proposed                  | 33 tables across foundation, commerce/funding, operations, platform integrity, and Phase 1 safety. See `ERD.md`.                                                                                                                                                         |
-| Existing tables changed              | qurban_events, offerings, purchases, payment_records, and audit_log receive additive 0005 changes; 0006 adds Event/Offering versions, exact-integer bounds, and a used-reservation aggregation index.                                                                    |
-| Deferred tables / relationships      | Contacts, roles/permissions administration, offering composition/cart, saving policy, giveaway selection, personal slaughter, distribution entitlement/beneficiaries, notifications, projections, and tenancy.                                                           |
-| Migration files created              | Twelve files: six `.up.sql` and six `.down.sql` files under `apps/api/migrations/`; 0006 adds Event/Offering concurrency and integer-safety hardening.                                                                                                                   |
-| Backfills required                   | None; no existing schema/data.                                                                                                                                                                                                                                           |
-| Indexes added                        | Event/status/channel queues, public references, role/source lookups, history chronology, financial reconciliation, quota/session queues, used-reservation aggregation, livestock/allocation/queue operations, audit targets, unpublished outbox, and idempotency expiry. |
-| Destructive operations               | Only rollback scripts use `DROP TABLE`; up migrations are additive. No `CASCADE` is used.                                                                                                                                                                                |
-| Rollback coverage                    | Complete per migration unit; apply down scripts in reverse order.                                                                                                                                                                                                        |
-| API contract impact                  | None. Both OpenAPI contracts remain placeholders.                                                                                                                                                                                                                        |
-| Dependency impact                    | Added `golang-migrate/migrate/v4` and test-only `go-sqlmock`; frontend dependencies unchanged.                                                                                                                                                                           |
+| Item                                           | Result                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Database engine / dialect discovered           | PostgreSQL; Compose uses `postgres:18-alpine`, and Go uses `pgx/v5` with `database/sql`.                                                                                                                                                                                                               |
+| Migration framework discovered                 | `golang-migrate/migrate/v4`, selected because it consumes paired SQL files and supports PostgreSQL locking/version state.                                                                                                                                                                              |
+| Existing schema reused                         | None. No business tables, SQL schema, ORM, query models, seeds, or migration history exist.                                                                                                                                                                                                            |
+| New tables proposed                            | 33 tables across foundation, commerce/funding, operations, platform integrity, and Phase 1 safety. See `ERD.md`.                                                                                                                                                                                       |
+| Existing tables changed                        | qurban_events, offerings, purchases, payment_records, and audit_log receive additive 0005 changes; 0006 adds Event/Offering versions, exact-integer bounds, and a used-reservation aggregation index.                                                                                                  |
+| Deferred tables / relationships at review time | Contacts, roles/permissions administration, offering composition/cart, saving policy, giveaway selection, attendance, distribution entitlement/beneficiaries, notifications, projections, and tenancy. ADR-051–ADR-055 now fix the Event-day targets, but additive implementation remains future work. |
+| Migration files created                        | Twelve files: six `.up.sql` and six `.down.sql` files under `apps/api/migrations/`; 0006 adds Event/Offering concurrency and integer-safety hardening.                                                                                                                                                 |
+| Backfills required                             | None; no existing schema/data.                                                                                                                                                                                                                                                                         |
+| Indexes added                                  | Event/status/channel queues, public references, role/source lookups, history chronology, financial reconciliation, quota/session queues, used-reservation aggregation, livestock/allocation/queue operations, audit targets, unpublished outbox, and idempotency expiry.                               |
+| Destructive operations                         | Only rollback scripts use `DROP TABLE`; up migrations are additive. No `CASCADE` is used.                                                                                                                                                                                                              |
+| Rollback coverage                              | Complete per migration unit; apply down scripts in reverse order.                                                                                                                                                                                                                                      |
+| API contract impact                            | None. Both OpenAPI contracts remain placeholders.                                                                                                                                                                                                                                                      |
+| Dependency impact                              | Added `golang-migrate/migrate/v4` and test-only `go-sqlmock`; frontend dependencies unchanged.                                                                                                                                                                                                         |
 
 ## Implemented
 
@@ -124,8 +130,9 @@ No migration was applied to staging or production.
   aggregate writes; no trigger convention exists yet.
 - `operator_users.external_subject` can reference a future authentication
   subject without committing to an authentication provider.
-- A minimal distribution record is useful as an operational handoff while the
-  exact entitlement and beneficiary model remains deferred.
+- The minimal distribution record was an operational handoff. ADR-054 now
+  fixes the Full Event-Day entitlement/beneficiary/pickup/delivery target;
+  additive implementation remains future work.
 - Allocation capacity totals will be protected by a transaction and row lock or
   equivalent application command; SQL alone cannot sum capacity across rows.
 
@@ -141,10 +148,10 @@ No migration was applied to staging or production.
   reminders.
 - Giveaway eligibility criteria and recipient-selection workflow.
 - Participant documents and object-storage references.
-- Personal slaughter attendance, proxy representation, and per-participant
-  queue rules.
-- Distribution beneficiaries, portions/entitlements, pickup/delivery proof,
-  and routing.
+- Runtime attendance/proxy/queue behavior and additive storage required by
+  ADR-053.
+- Runtime Distribution beneficiaries, portions/entitlements, pickup/delivery,
+  and proof required by ADR-054; route optimization remains deferred.
 - Notification attempts, payment-provider inboxes, and report/dashboard
   projections.
 - Generic multitenancy or `organisation_id`.
@@ -157,22 +164,20 @@ No migration was applied to staging or production.
    price-lock constraints will need hardening after product decisions.
 3. Authentication storage is present, but OIDC, session, CSRF, and permission
    runtime behavior remain unimplemented.
-4. Distribution is deliberately minimal and must not be treated as a complete
-   entitlement model.
+4. Distribution remains schema-only/minimal and must not be treated as the
+   ADR-054 runtime entitlement model.
 5. Rollback remains destructive and should be exercised only against a
    disposable/local database until a deployment backup and recovery policy is
    established.
 
 ## Recommended next task
 
-Run the explicit migration/seed workflow against disposable PostgreSQL, then
-implement the first vertical slice:
+The migration/seed workflow and the Event/Offering plus Week 3 Common Purchase
+backend slices were completed after this historical review. The current next
+task is:
 
 ```text
-Qurban Event → Offering → Common Purchase → Payment Verification
-→ Sohibul Qurban Activation → Basic Operations Projection
+W3-07 Storefront Direct Checkout Form and Confirmation
 ```
 
-That task should add domain/application code, OpenAPI contracts, authorization,
-audit assertions, transaction/concurrency tests, and the first migration
-runner integration.
+Revalidate the active tracker row and current source before execution.

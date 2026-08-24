@@ -24,6 +24,9 @@ Read these canonical documents before planning or implementation:
 - `.codex/CURRENT_STATE.md` — implementation state and known gaps;
 - `.codex/TASK.md` — current task constraints.
 
+`MVP-DELIVERY-ROADMAP.md` is the approved delivery-plan baseline. It is a
+planning artifact, not canonical product truth or implementation evidence.
+
 `.codex/` contains agent execution context, not canonical product or architecture documents.
 `docs/CONVENTIONS.md` applies those canonical boundaries; it does not override
 product requirements, architecture, or accepted decisions.
@@ -85,19 +88,33 @@ with a new `.codex/TASK.md`; do not reactivate an archived task.
 ## Product boundaries
 
 - The initial deployment is a Go modular monolith backed by PostgreSQL.
-- Storefront and Operations remain separate React applications.
+- Storefront and Operations remain separate Next.js React applications.
 - Purchasing channels are `COMMON`, `SAVING`, and `GIVEAWAY` and converge into one canonical Purchase lifecycle.
 - Purchaser, payer, saving-account holder, sponsor, giveaway applicant, giveaway recipient, and Sohibul Qurban are distinct roles.
 - Sohibul Qurban is an outcome of eligible purchasing, not a purchasing channel.
 - Saving Account becomes a Purchase only after conversion; giveaway applications become Purchases only after approval and assignment.
 - Livestock is a lifecycle-managed physical entity; Allocation is a first-class transactional domain.
 - Dashboard data is a projection, not transactional truth.
+- A Full Event-Day MVP Event has exactly three or four inclusive local
+  execution days in an explicit IANA timezone.
+- Field teams, memberships, shifts, station/location assignments, readiness,
+  handovers, incidents, and support escalation are Event-scoped.
+- Sohibul Qurban attendance is explicitly `SELF`, `PROXY`, or `NONE` when the
+  Event enables it; attendance does not determine payment eligibility.
+- Distribution supports explicit Sohibul entitlement and beneficiary portions,
+  pickup or delivery, proof, exceptions, and completion.
+- Polling is the realtime baseline; SSE serves high-value one-way updates.
+  WebSocket requires a separate proven bidirectional need.
+- The responsive PWAs are the mobile baseline. Only allowlisted non-financial
+  field milestones may queue during degraded connectivity; sensitive commands
+  remain online-only.
 - Do not add hypothetical SaaS multitenancy, mandatory `organisation_id`, microservices, or speculative infrastructure without an accepted ADR.
 
 ## Engineering rules
 
 - Keep business rules in the Go API, not in frontend placeholders.
-- Use centralized frontend route registries in `src/routes/paths.ts` and `src/routes/routes.tsx`.
+- Use Next.js App Router filesystem routes under `src/app/` and centralized URL
+  builders in `src/routes/paths.ts`. Do not recreate a client route registry.
 - Keep public and operations OpenAPI contracts separate at:
   - `contracts/openapi/storefront.yaml`;
   - `contracts/openapi/operations.yaml`.

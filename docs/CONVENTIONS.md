@@ -552,3 +552,41 @@ The following are intentionally not normalized by this document:
 | Pagination and filters            | Operations cursor pagination is specified; Storefront and generic search/filter policy remain endpoint-specific and incomplete.                                                                                                                                |
 
 Do not resolve these gaps through broad refactoring or speculative tooling.
+
+## 10. Event-day, mobile, and realtime conventions
+
+REQUIRED:
+
+- Scope every Event-day command to the authoritative Event and, when
+  applicable, execution day, team, shift, station/location, and actor
+  assignment. A frontend-selected team or station is input, not authorization.
+- Use caller-owned transactions, optimistic versions or row locks, domain
+  duplicate guards, append-only history, audit, outbox, and idempotency for
+  contested allocation, queue, incident, and distribution transitions.
+- Keep projections, polling, SSE, caches, and device-local queues as
+  read/delivery mechanisms only. Commands always revalidate authoritative
+  state.
+- Expose projection timestamp/lag and reconnect/error state. Do not present a
+  stale dashboard as current.
+- Prefer bounded polling. Add SSE only for a documented one-way freshness need;
+  preserve polling as fallback and implement `Last-Event-ID` or an equivalent
+  durable cursor before relying on SSE during an Event.
+- Keep ordinary service-worker caching free of API, authentication, payment,
+  participant, livestock, allocation, slaughter, distribution, and operational
+  data.
+- Allow offline replay only for the ADR-055 command allowlist. Queue minimum
+  non-sensitive payloads with bounded retention and idempotency; never queue
+  payment, evidence, identity, authorization, Event/team configuration,
+  capacity override, or credential material.
+- Provide manual code entry for every QR/barcode-assisted critical workflow.
+  A browser capability must be an enhancement, not a release dependency.
+- Test representative mobile sizes, low bandwidth, disconnect/reconnect,
+  duplicate replay, stale versions, multi-device conflicts, accessibility, and
+  safe support diagnostics for each field vertical slice.
+
+TBD:
+
+- Exact browser/device versions belong to the Week 14 support matrix and may be
+  revised from measured field evidence without changing the architecture.
+- A native mobile app, WebSocket, Redis, broker, or service split requires a
+  separate accepted decision and measured need.
