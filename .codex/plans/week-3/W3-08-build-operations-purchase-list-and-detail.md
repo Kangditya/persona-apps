@@ -2,10 +2,10 @@
 
 ## Status
 
-Draft prepared on 2026-08-24 and ready for review. The live tracker status is
-`Ready` because W3-03 and W3-06 are complete. This remains an inactive plan:
-do not begin BUILD until it is explicitly approved and copied to a new
-`.codex/TASK.md`. Do not commit or push unless requested.
+Penpot-reconciled draft prepared on 2026-08-26 and ready for review. The live
+tracker status is `Ready` because W3-03 and W3-06 are complete. This remains an
+inactive plan: do not begin BUILD until it is explicitly approved and copied
+to a new `.codex/TASK.md`. Do not commit or push unless requested.
 
 ## Tracker
 
@@ -65,6 +65,37 @@ exists.
   `apps/api/internal/purchasing/operations_http.go`, Purchase repository, and
   composed API integration tests;
 - `.codex/CURRENT_STATE.md` and `MVP-DELIVERY-ROADMAP.md`.
+- the user-supplied
+  [QurbanPlus Penpot file](https://design.penpot.app/#/workspace?team-id=81f57451-85cc-819d-8008-7c2bac979fc9&file-id=81f57451-85cc-819d-8008-7c2c1dbf6c2a&page-id=81f57451-85cc-819d-8008-7c2c1dbf6c2b),
+  specifically
+  `24 · Operations · 05 Purchasing Queue`, as a visual composition reference
+  subordinate to the Operations contract, current runtime, permissions, and
+  canonical product artifacts.
+
+## Penpot Design Evidence and Reconciliation
+
+The inspected Penpot page contains one `1440 × 960`
+`Operations · Purchasing Queue · v2` desktop board. It establishes a dark
+sidebar shell, top header/action area, four summary-card positions, a filter
+band, a large table region, and a lower supporting panel.
+
+The board is a skeletal composition rather than a complete content contract:
+its layer names remain generic, visible business copy/field definitions are
+absent, and there is no mobile board or separate Purchase-detail design.
+Therefore:
+
+- Reuse the existing Operations shell and semantic tokens; do not restyle the
+  whole application or add a page-specific font/palette.
+- Adopt a clear heading, compact contract-backed filters, bounded results
+  region, status emphasis, and direct detail navigation.
+- Do not add the four KPI cards, primary command button, dashboard totals, or
+  lower-panel workflow because no current API supplies those values/actions
+  and W6 owns the fuller commerce control plane.
+- Do not call the list an actionable “queue” when it is an authoritative
+  read-only Purchase list.
+- Use the desktop composition at wide widths and a simple stacked result-card
+  fallback at 360px. No mobile design details may be invented beyond existing
+  repository accessibility/responsive conventions.
 
 ## Required Workflow
 
@@ -99,6 +130,9 @@ API, or guess missing fields.
   snapshots, exact total/currency, and timestamps.
 - Preserve accessible headings, filter labels, table/list semantics, links,
   focus, status messaging, keyboard use, and representative narrow layouts.
+- Follow the inspected Penpot desktop hierarchy only where current list/detail
+  data supports it; every omitted design placeholder remains explicitly
+  deferred rather than filled with fake values.
 
 ### Out of Scope
 
@@ -113,6 +147,8 @@ API, or guess missing fields.
   expose, including internal token/hash/idempotency/outbox/reservation data.
 - Polling, dashboard projections, optimistic updates, bulk selection, infinite
   scrolling, TanStack Table/Form/Router, or a new frontend dependency.
+- Penpot-only KPI cards, totals, primary mutations, or a selected-row action
+  panel without an owning contract/runtime query.
 - Completing the richer W6-03 search/filter/exception workflow.
 
 ## Existing State
@@ -146,6 +182,9 @@ API, or guess missing fields.
 - The list shows a concise summary and a centralized detail link for each
   Purchase. It does not load each detail or participant list, avoiding N+1
   requests.
+- At desktop width, contract-backed filters and results follow the Penpot
+  filter-band/table hierarchy. At 360px, the same records stack into readable
+  cards without horizontal dependence or new behavior.
 - The detail route validates the path ID before enabling its query, handles
   `404` distinctly, and renders explicit purchaser, payer, and ordered intended
   participant roles without calling them one generic customer.
@@ -170,6 +209,9 @@ API, or guess missing fields.
 - Render backend strings through React text only. Do not expose arbitrary error
   details or use `dangerouslySetInnerHTML`.
 - Do not attach CSRF or idempotency headers to these read-only GET requests.
+- Treat Penpot as layout evidence, not permission to invent query fields,
+  metrics, commands, or lifecycle semantics. Preserve current semantic tokens
+  and system typography instead of introducing a one-screen design subsystem.
 
 ## Implementation Requirements
 
@@ -214,6 +256,9 @@ API, or guess missing fields.
 - List cards/rows expose the non-secret reference, status, Event, captured
   Offering name, purchaser, amount/currency, and created time with a detail
   link.
+- At wide width, use a semantic results table when it remains readable; at
+  narrow width, render the same validated fields as stacked cards. Do not add
+  a table dependency.
 - Detail uses a definition list or similarly semantic grouping for identity,
   commercial snapshot, participant snapshots, and lifecycle timestamps.
 - Display exact minor-unit values without floating-point conversion or an
@@ -235,11 +280,14 @@ API, or guess missing fields.
 | `apps/operations-web/src/features/purchases/queries.ts` | Create | Feature-owned private query keys and list/detail hooks. |
 | `apps/operations-web/src/screens/PurchasingPage.tsx` | Modify | Replace the placeholder with permission-gated filters, cursor list, and explicit states. |
 | `apps/operations-web/src/screens/PurchaseDetailPage.tsx` | Create | Permission-gated snapshot and Party/participant relationship detail. |
+| `apps/operations-web/src/styles/global.css` | Modify | Correct the same proven shared-UI Tailwind source path before relying on shared primitives in Operations Purchase screens. |
 | `.codex/CURRENT_STATE.md` | Modify after verified execution | Record the implemented Operations Purchase reads and deferred W6 scope. |
 
 Reuse `features/events/AccessBoundary.tsx` and `features/events/errors.ts`
 without moving or copying them. Keep small display formatters in the owning
-screen until a second Purchase screen proves reuse.
+screen until a second Purchase screen proves reuse. Keep the few Purchase
+response guards local to `api/purchases.ts`; do not refactor the established
+Event/Offering parser into a generic API-schema framework for this task.
 
 ## API, Database, and Dependency Impact
 
@@ -276,11 +324,15 @@ screen until a second Purchase screen proves reuse.
    audit/outbox payload, public DTO, or unrelated Party data is exposed.
 9. Safe GETs send no CSRF/idempotency header and introduce no mutation or
    optimistic state.
-10. Keyboard, focus, labels, semantic data grouping, request-state messaging,
-    text zoom, and representative narrow/desktop layouts are verified.
-11. Logout still removes all private Purchase query data through the existing
+10. The page preserves the supported Penpot hierarchy—Operations shell,
+    contract-backed filters, bounded results, and status emphasis—without
+    inventing its placeholder KPI cards, primary action, totals, or lower
+    workflow panel.
+11. Keyboard, focus, labels, semantic data grouping, request-state messaging,
+    text zoom, and representative 360px/1440px layouts are verified.
+12. Logout still removes all private Purchase query data through the existing
     private-root prefix.
-12. No uncontracted search, generated client, new dependency, backend
+13. No uncontracted search, generated client, new dependency, backend
     workaround, or W6 behavior is added.
 
 ## Testing
@@ -295,6 +347,9 @@ screen until a second Purchase screen proves reuse.
 - Structural tests with the existing React/Vitest capability for role labels,
   safe snapshot fields, empty/error states, and absence of mutation/token
   content.
+- Structural/browser checks for the Penpot-backed filter/results hierarchy,
+  wide table and narrow card adaptation, and absence of unsupported KPI/action
+  placeholders.
 - Real-browser smoke with the real OIDC/session API and disposable PostgreSQL:
   unauthenticated, forbidden, permitted list, filters, cursor page, direct
   detail, missing Purchase, logout cache removal, keyboard flow, and 360px
@@ -336,6 +391,9 @@ mock-only data does not satisfy the acceptance criteria.
   checks are presentation only.
 - Accepted: current list “search” means Event/status filtering and cursor
   navigation. There is no free-text or reference-search API to call.
+- Penpot page 24 is a composition reference only. Its skeletal KPI cards,
+  action area, and lower panel remain omitted until W6 or another accepted API
+  task owns real data and behavior.
 - Contract/runtime nuance: detail runtime includes participant snapshots and
   list runtime omits them; validate this endpoint-specific distinction instead
   of treating one shape as universal.

@@ -1,12 +1,13 @@
 # Task: W3-07 Build Storefront Direct-Checkout Form and Confirmation
 
+## Executed
+
 ## Status
 
-Executed and verified on 2026-08-28 after explicit plan approval and BUILD
-authorization. The live tracker status is `Done`; the preserved execution
-record is archived at
-`.codex/archive/2026-08-28-TASK-w3-07-build-storefront-direct-checkout-form-and-confirmation.md`.
-Do not commit or push unless requested.
+Implemented and verified as of 2026-08-28. The user explicitly approved the
+Penpot-reconciled W3 plan, authorized W3-07 BUILD, and confirmed that the
+Penpot edits should be applied. The live tracker row W3-07 is now `Done`.
+W3-08 remains `Ready`; W3-09 remains `Backlog`. No commit or push was made.
 
 ## Tracker
 
@@ -299,6 +300,20 @@ React.
 - Verify at a representative 360px width, keyboard-only navigation, text zoom,
   and normal desktop width.
 
+## Plan Variance — Shared UI Tailwind Source
+
+- Planned behavior: reuse `@persona-apps/ui` primitives and semantic tokens for
+  the Penpot-aligned checkout.
+- Unexpected evidence: browser computed styles showed shared Card utilities
+  such as `p-6`, `gap-1.5`, and `bg-card` were absent. The Storefront
+  `@source "../../../packages/ui/src"` path resolves below `apps/` instead of
+  the repository-level `packages/ui/src` directory.
+- Necessary change: correct only the Storefront source path to
+  `../../../../packages/ui/src` and verify the generated styles in the browser.
+- Impact: one additional planned Storefront CSS file; no token, component,
+  dependency, API, or business-behavior change. The matching Operations path
+  is recorded in W3-08 rather than changed during W3-07.
+
 ## Planned File Changes
 
 | File | Action | Purpose |
@@ -312,7 +327,7 @@ React.
 | `apps/storefront-web/src/features/purchases/checkout.test.ts` | Create | Verify shared/distinct roles, participant order, bounds, and retry-intent identity. |
 | `apps/storefront-web/src/screens/CheckoutPage.tsx` | Create | Accessible direct-checkout form, explicit states, and inline safe confirmation. |
 | `apps/storefront-web/src/screens/OfferingDetailPage.tsx` | Modify | Replace future-checkout copy with the real centralized checkout link while retaining advisory availability language. |
-| `apps/storefront-web/src/styles/global.css` | Modify only after browser evidence | Correct the shared-UI Tailwind source path when computed styles prove existing primitives are not scanned. |
+| `apps/storefront-web/src/styles/global.css` | Modify | Correct the proven shared-UI Tailwind source path so existing primitives render their declared spacing and semantic colors. |
 | `.codex/CURRENT_STATE.md` | Modify after verified execution | Record implemented checkout UI and the still-deferred tracking/token-persistence boundary. |
 
 Keep small one-use presentation helpers inside `CheckoutPage.tsx`. Do not add a
@@ -429,6 +444,65 @@ not claim a mock-only or build-only result completes the task.
   must accept a safe durable/resumable policy before any persistence is added.
 - Deferred: payment instructions/evidence/status (Week 4), completed Storefront
   flow and tracking (Week 5), and all non-`COMMON` channels.
+
+## Execution Report
+
+### Implemented
+
+- Added `apps/storefront-web/src/api/purchases.ts` and its focused tests for
+  the exact public `POST /api/public/v1/purchases` contract, omitted
+  credentials, bounded response guards, and safe error mapping.
+- Added `apps/storefront-web/src/features/purchases/checkout.ts` and tests for
+  purchaser declarations, same/distinct payer mapping, ordered purchaser /
+  payer / name-only intended participants, bounded strings, and frozen
+  idempotency intents.
+- Added the thin App Router entry
+  `apps/storefront-web/src/app/offerings/[offeringId]/checkout/page.tsx` and
+  `apps/storefront-web/src/screens/CheckoutPage.tsx`.
+- Updated `src/routes/paths.ts`, route tests, `OfferingDetailPage.tsx`, and
+  the proven Tailwind shared-UI source path in `global.css`.
+- The success state is inline and uses only safe Purchase facts. The one-time
+  access token remains ephemeral JavaScript state and is not rendered,
+  serialized into navigation, persisted, logged, placed in query data, or
+  cached by the service worker.
+- Applied the authorized Penpot copy corrections on pages `13 · Storefront ·
+  04 Checkout Participant` and `16 · Storefront · 07 Purchase Confirmation`.
+  No Penpot page was deleted; all 28 pages remain in the file.
+
+### Verified
+
+- Storefront focused suite: 10 files, 31 tests; typecheck, Oxlint, and
+  production build passed, including the generated dynamic checkout route.
+- `make lint typecheck test build compose-check` passed across both frontends
+  and the API. The database-enabled Go suite passed against a disposable
+  PostgreSQL database, and `git diff --check` passed.
+- Browser evidence covered shared/distinct payer and name-only participant
+  submission, quota conflict with preserved form values, safe success without
+  payment/tracking controls, keyboard/focus behavior, 44px submit target, and
+  a 360px viewport with no horizontal overflow.
+- Penpot screenshots verified the updated checkout and confirmation hierarchy;
+  the live page tree still lists every original page.
+- The tracker was updated narrowly at `Tracker!I23` and `Tracker!N23`, then
+  read back as `W3-07 = Done`.
+
+### Assumed
+
+- The existing public catalogue query remains the source of Offering context;
+  the API remains authoritative for eligibility, price, totals, capacity,
+  quota, snapshots, reservation, reference, and token generation.
+- Indonesian Penpot copy is treated as visual hierarchy guidance because the
+  Storefront has no accepted localization workflow; runtime copy remains the
+  existing English product language.
+
+### Deferred / Risks
+
+- `make validate` is not green in this run because of pre-existing repository
+  Go formatter drift; unrelated Go files were not reformatted.
+- Payment instructions/evidence/status, Purchase tracking, cancellation,
+  token recovery, Sohibul activation, non-`COMMON` channels, and Operations
+  Purchase list/detail remain out of scope. W3-08 and W3-09 are still open.
+- Reload/navigation loses the ephemeral token until W5-05 accepts a reviewed
+  durable tracking policy.
 
 ## Final Report Requirements
 

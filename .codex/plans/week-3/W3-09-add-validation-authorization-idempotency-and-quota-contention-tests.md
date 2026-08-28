@@ -2,11 +2,11 @@
 
 ## Status
 
-Draft prepared on 2026-08-24. The live tracker status remains `Backlog` because
-W3-07 and W3-08 are execution dependencies and are not implemented. This
-inactive plan may be reviewed now, but it must not be activated or copied to
-`.codex/TASK.md` until both frontend tasks are implemented and verified. Do not
-commit or push unless requested.
+Penpot-reconciled draft prepared on 2026-08-26. The live tracker status remains
+`Backlog` because W3-08 is still an execution dependency; W3-07 is implemented
+and verified. This inactive plan may be reviewed now, but it must not be
+activated or copied to `.codex/TASK.md` until both frontend tasks are
+implemented and verified. Do not commit or push unless requested.
 
 ## Tracker
 
@@ -78,6 +78,31 @@ composed PostgreSQL-backed flow.
   and W3-08 outputs;
 - current backend, frontend, shared-client, PWA, CI, and test source;
 - `.codex/CURRENT_STATE.md` and `MVP-DELIVERY-ROADMAP.md`.
+- the user-supplied
+  [QurbanPlus Penpot file](https://design.penpot.app/#/workspace?team-id=81f57451-85cc-819d-8008-7c2bac979fc9&file-id=81f57451-85cc-819d-8008-7c2c1dbf6c2a&page-id=81f57451-85cc-819d-8008-7c2c1dbf6c2b),
+  specifically pages
+  `13 · Storefront · 04 Checkout Participant`,
+  `16 · Storefront · 07 Purchase Confirmation`, and
+  `24 · Operations · 05 Purchasing Queue` as visual verification references,
+  with canonical product/API/security artifacts taking precedence.
+
+## Penpot Design Evidence and Test Boundary
+
+- Checkout and confirmation each provide one `862 × 1650` single-column board
+  with buyer/intended-participant/package sections, minimum-data/help content,
+  and safe confirmation reference/status/summary hierarchy.
+- The confirmation mockup includes payment instructions and automatic payment
+  verification copy that W3-07 must omit because those capabilities are not
+  implemented.
+- Operations provides one `1440 × 960` skeletal desktop board with shell,
+  summary-card, filter, table, and lower-panel regions, but no complete business
+  copy, mobile board, or detail design.
+
+W3-09 verifies artifact-safe conformance, not pixel identity: correct section
+order, semantics, responsive behavior, accessibility, token/privacy boundaries,
+and explicit absence of unsupported payment/KPI/mutation claims. It does not
+add a screenshot-diff framework or treat blank design placeholders as product
+requirements.
 
 ## Required Workflow
 
@@ -112,6 +137,9 @@ At activation:
   errors, confirmation fields, and raw-token non-exposure/non-persistence.
 - Operations tests for exact credentialed reads, query isolation, permission
   states, snapshots, Party roles, and no CSRF/idempotency headers on GET.
+- Penpot-informed structural and browser checks for the accepted checkout,
+  confirmation, and Operations information hierarchy plus all documented
+  design-to-contract omissions.
 - Contract/runtime exposure checks, focused race coverage, real-browser
   end-to-end smoke, and complete repository validation.
 - Narrow production defect fixes only when the new test fails for behavior
@@ -218,6 +246,7 @@ only when the final vertical-slice matrix identifies a missing assertion.
 | Storefront UI | Exact role-to-payload mapping, no automatic mutation retry, frozen same-intent key, edited-intent new key, all request states, safe confirmation, token absent from DOM/URL/storage/log/PWA/query cache, keyboard/mobile behavior. |
 | Operations UI | Session/access states, exact credentialed list/detail calls, query-key isolation, filters/cursor reset, safe snapshots/roles, logout private-cache removal, no mutation affordance, keyboard/mobile behavior. |
 | Contracts and integration | Both OpenAPI documents validate; runtime paths/status/fields match; real Next.js clients use the real Go API/PostgreSQL; PWA remains network-only for API/auth/business data. |
+| Penpot reconciliation | Storefront section/status/summary/help hierarchy and Operations filter/results hierarchy render at 862px/1440px and adapt at 360px; unsupported payment CTA/copy, KPI cards, totals, and mutations remain absent. |
 
 ## Implementation Requirements
 
@@ -269,8 +298,14 @@ only when the final vertical-slice matrix identifies a missing assertion.
   checkout -> safe confirmation -> authenticated Operations list/detail ->
   logout. Include validation, quota conflict, forbidden operator, direct route,
   keyboard, and 360px checks.
+- At `862px` and `1440px`, compare the implemented information hierarchy with
+  the corresponding Penpot boards. At `360px`, verify the repository-defined
+  accessible stacking behavior because Penpot supplies no mobile board.
 - Inspect URL, rendered text, browser storage, logs, network requests, and
   generated service-worker policy for Purchase-token leakage.
+- Assert the Storefront does not render the Penpot-only payment-instructions
+  action/verification promise and Operations does not render placeholder KPI,
+  total, or mutation controls.
 
 ## Planned File Changes
 
@@ -331,12 +366,15 @@ service, or CI job is planned.
    workers cache no API/auth/participant/financial/operational data.
 9. Both OpenAPI contracts validate and the real browser completes the Week 3
    journey against the real API/disposable database at desktop and 360px.
-10. `make validate`, full Go vet/test/build, database-enabled tests, focused
+10. Penpot-backed structural checks pass at the provided 862px/1440px boards
+    and the 360px adaptation, while all design elements outside implemented
+    contracts remain absent.
+11. `make validate`, full Go vet/test/build, database-enabled tests, focused
     race tests, Compose validation, and applicable migration lifecycle checks
     pass without hidden skips.
-11. Every test fixture is uniquely owned and cleaned; no secret, database dump,
+12. Every test fixture is uniquely owned and cleaned; no secret, database dump,
     browser credential, generated output, or scanner cache is committed.
-12. No arbitrary coverage gate, redundant framework, test-only bypass,
+13. No arbitrary coverage gate, redundant framework, test-only bypass,
     unrequested product behavior, or unrelated refactor is added.
 
 ## Verification
@@ -389,6 +427,10 @@ remaining risk.
   browser path. Do not replace it with a production auth bypass.
 - Process-local public rate limiting and local web security headers do not prove
   uniform ingress behavior; deployment/security hardening remains later work.
+- Penpot has no mobile board for these screens and its Operations queue is
+  skeletal. W3-09 verifies the supplied desktop composition plus the
+  repository's conservative responsive fallback; it does not invent missing
+  mobile or KPI behavior.
 - Deferred: Payment/activation (Week 4), complete Storefront/Operations
   journeys (Weeks 5–6), and release-wide load, device, resilience, and security
   evidence (Weeks 14–16).

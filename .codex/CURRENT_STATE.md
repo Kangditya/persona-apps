@@ -25,7 +25,9 @@ It currently contains:
 The Event and Offering domain cores, PostgreSQL repositories, additive
 version/bounds migration, public catalogue routes, and permission-gated
 Operations command/query routes are implemented. Operations Event/Offering and
-Storefront public catalogue screens are implemented.
+Storefront public catalogue screens are implemented. Storefront direct
+checkout and its inline safe Purchase confirmation are now implemented over the
+public Purchase command; Operations Purchase list/detail remains pending.
 
 The product direction has changed from a generic single-brand commerce and POS platform into a:
 
@@ -146,12 +148,15 @@ Current placeholder routes:
 #### Storefront Web
 
 ```text
+/offerings/[offeringId]/checkout
 /purchase-tracking
 ```
 
 `/operator-login` now owns the real OIDC session/sign-in/logout state. The
 remaining Operations routes and Storefront `/purchase-tracking` route in these
-lists are capability-aligned placeholders. Event/Offering administration is
+lists are capability-aligned placeholders. Storefront checkout is implemented
+under the Offering detail route and creates one public `COMMON` Purchase;
+payment, tracking, and token recovery remain deferred. Event/Offering administration is
 implemented under Operations `/events`; public discovery is implemented under
 Storefront `/` and `/offerings`.
 
@@ -364,7 +369,7 @@ and atomic public checkout with durable encrypted replay.
 
 - Saving Purchasing;
 - Giveaway Purchasing;
-- purchase confirmation;
+- Operations Purchase list/detail;
 - purchase cancellation;
 - payment and later Purchase lifecycle transitions.
 
@@ -522,7 +527,7 @@ Current replacements:
 
 ## Current Verification State
 
-Last recorded implementation verification: **2026-08-21**
+Last recorded implementation verification: **2026-08-28**
 
 The product/architecture and frontend-artifact alignment has been verified
 with:
@@ -563,11 +568,17 @@ recovery, minimized public projection, and logout. The fixture ended archived
 in the local development database, and temporary cookie/CSRF artifacts were
 securely deleted.
 
-Repository-wide validation now passes: `make validate`, `go vet ./...`,
-`go test ./...`, `go build ./...`, Compose configuration, and the API container
-build are green. Four pre-existing Go formatter drifts were normalized, and the
-auth-session test fixture now uses a time-relative future expiry rather than an
-expired fixed date.
+The W3-07 verification run passed Storefront tests (10 files, 31 tests),
+Storefront typecheck, Oxlint, production build, generated checkout route,
+representative desktop/360px browser checks, and the full database-enabled Go
+suite against a disposable PostgreSQL database. `make lint typecheck test
+build compose-check` is green across both frontends and the API. The current
+`make validate` command remains blocked only by the repository's pre-existing
+Go formatter drift; no unrelated Go files were changed to hide that blocker.
+
+The earlier W2 repository-wide validation evidence remains historical. The
+current W3-07 run also passes `git diff --check` and introduces no dependency
+or generated-client changes.
 
 Production Chrome smoke ran against both independently started Next apps.
 Storefront and Operations direct routes hydrated correctly; Storefront client
@@ -586,8 +597,8 @@ verified.
 The API provides `/health`, PostgreSQL-backed `/ready`, graceful shutdown, the
 bounded guest Event/Offering catalogue, and transactional Operations
 Event/Offering commands. It has authorized Operations Purchase reads and
-`POST /api/public/v1/purchases`; Storefront checkout and Operations Purchase
-screens remain unimplemented.
+`POST /api/public/v1/purchases`; Storefront checkout and inline confirmation
+are implemented, while Operations Purchase screens remain unimplemented.
 
 ---
 
@@ -646,8 +657,8 @@ scope, polling/SSE, mobile web, and bounded degraded-connectivity boundary.
 
 ## Current Risks
 
-1. Event/Offering APIs and frontend flows plus the Common Purchase backend
-   exist, but Storefront checkout and Operations Purchase screens remain.
+1. Event/Offering APIs and frontend flows plus the Common Purchase backend and
+   Storefront checkout exist; Operations Purchase screens remain.
 2. The public limiter is intentionally per process. Ingress/CDN enforcement is
    still required for a uniform multi-replica rate limit and key-filling abuse.
 3. Migration/repository verification used only an explicitly disposable local
@@ -673,8 +684,9 @@ scope, polling/SSE, mobile web, and bounded degraded-connectivity boundary.
 
 ## Recommended Next Task
 
-Execute W3-07 Storefront direct checkout form and confirmation next, then W3-08
-Operations Purchase list/detail and W3-09 cross-surface safety tests.
+Execute W3-08 Operations Purchase list/detail next, then W3-09 cross-surface
+safety tests. Payment instructions, tracking, and token recovery remain later
+scope.
 
 The recommended first slice remains:
 
@@ -706,20 +718,21 @@ Repository bootstrap
 Week 2 Event and Offering discovery/administration
 Week 3 backend: Party identity, role mapping, Purchase persistence/reads,
 snapshots/totals, quota reservation, and atomic guest checkout (W3-01–W3-06)
+W3-07 Storefront direct checkout form and inline confirmation
 ```
 
 ### In Progress
 
 ```text
 First qurban vertical slice
-W3-07 Storefront checkout and W3-08 Operations Purchase views
+W3-08 Operations Purchase views
 ```
 
 ### Not Started
 
 ```text
-Storefront checkout UI, Payment/activation, and the Full Event-Day operational
-roadmap from teams/Livestock through controlled pilot
+W3-09 cross-surface safety tests, Payment/activation, and the Full Event-Day
+operational roadmap from teams/Livestock through controlled pilot
 ```
 
 ---
@@ -731,7 +744,7 @@ Last synchronized planning review: **2026-08-24**
 - `MVP-DELIVERY-ROADMAP.md` supersedes the former eight-week commerce-only
   plan with a 16-week Full Event-Day MVP.
 - The live `Qurban MVP Project Tracker` contains 127 tasks through W16-09:
-  21 `Done`, W3-07 and W3-08 `Ready`, and 104 `Backlog`.
+  22 `Done`, W3-08 `Ready`, and W3-09 plus 103 other tasks `Backlog`.
 - Planned effort is 723 hours. Actual Hours remain blank because no measured
   time was supplied.
 - All unfinished tracker dependencies resolve to existing earlier task IDs and

@@ -4,6 +4,7 @@ import { ApiError } from "@persona-apps/api-client";
 import {
     Alert,
     Badge,
+    buttonVariants,
     Card,
     CardContent,
     CardDescription,
@@ -20,7 +21,7 @@ import {
     exactMinorPrice,
 } from "../features/catalogue/presentation";
 import { usePublicOffering } from "../features/catalogue/queries";
-import { paths } from "../routes/paths";
+import { checkoutPath, paths } from "../routes/paths";
 
 export function OfferingDetailPage() {
     const offeringId = useParams<{ offeringId: string }>()?.offeringId ?? "";
@@ -113,10 +114,19 @@ export function OfferingDetailPage() {
                                 offering.data.availableParticipantUnits,
                             )}
                             <span className="mt-1 block text-sm">
-                                Final availability will be confirmed by a future
+                                Final availability is confirmed by the
                                 server-side checkout.
                             </span>
                         </Alert>
+                        <Link
+                            className={buttonVariants({
+                                size: "lg",
+                                className: "w-fit",
+                            })}
+                            href={checkoutPath(offering.data.id)}
+                        >
+                            Start direct checkout
+                        </Link>
                     </CardContent>
                 </Card>
             )}

@@ -8,6 +8,10 @@ export function offeringPath(offeringId: string): string {
   return `/offerings/${encodeURIComponent(offeringId)}`;
 }
 
+export function checkoutPath(offeringId: string): string {
+  return `${offeringPath(offeringId)}/checkout`;
+}
+
 export function isActivePath(pathname: string, target: string): boolean {
   return (
     pathname === target ||

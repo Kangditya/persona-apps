@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isActivePath, offeringPath, paths } from "./paths";
+import { checkoutPath, isActivePath, offeringPath, paths } from "./paths";
 
 describe("storefront paths", () => {
   it("keeps the storefront routes centralized", () => {
@@ -10,6 +10,9 @@ describe("storefront paths", () => {
       "/purchase-tracking",
     ]);
     expect(offeringPath("offering/id")).toBe("/offerings/offering%2Fid");
+    expect(checkoutPath("offering/id")).toBe(
+      "/offerings/offering%2Fid/checkout",
+    );
   });
 
   it("marks exact routes and their dynamic children active", () => {
