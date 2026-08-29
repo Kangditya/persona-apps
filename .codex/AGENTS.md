@@ -664,13 +664,11 @@ Rules:
 Use module-oriented boundaries:
 
 ```text
-apps/api/internal/<module>/
+apps/api/internal/modules/<module>/
 ├── domain/
 ├── application/
-├── adapter/
-│   ├── postgres/
-│   ├── integration/
-│   └── http/
+├── infrastructure/persistence/
+├── transport/http/
 └── module.go
 ```
 
@@ -701,24 +699,16 @@ Domain packages must not depend on:
 
 ```text
 apps/api/internal/
-├── platform/
-├── event/
-├── identity/
-├── offering/
-├── purchasing/
-├── payment/
-├── saving/
-├── giveaway/
-├── participant/
-├── livestock/
-├── allocation/
-├── slaughter/
-├── distribution/
-├── notification/
-└── reporting/
+├── modules/
+│   ├── event/
+│   ├── identity/
+│   ├── offering/
+│   └── purchasing/
+└── platform/
 ```
 
-Do not create all modules as empty shells. Add a module when required by an implemented vertical slice.
+Do not create all modules as empty shells. Add a module under
+`internal/modules` only when required by an implemented vertical slice.
 
 ---
 

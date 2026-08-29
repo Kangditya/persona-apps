@@ -37,12 +37,13 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    http.HandleFunc("/.well-known/openid-configuration", discovery)
-    http.HandleFunc("/keys", keys)
-    http.HandleFunc("/authorize", authorize)
-    http.HandleFunc("/token", token)
+    router := http.NewServeMux()
+    router.HandleFunc("/.well-known/openid-configuration", discovery)
+    router.HandleFunc("/keys", keys)
+    router.HandleFunc("/authorize", authorize)
+    router.HandleFunc("/token", token)
     log.Printf("local OIDC issuer listening on %s", issuer)
-    log.Fatal(http.ListenAndServe(":7071", nil))
+    log.Fatal(http.ListenAndServe(":7071", router))
 }
 
 func discovery(w http.ResponseWriter, _ *http.Request) {

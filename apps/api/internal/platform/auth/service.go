@@ -68,6 +68,45 @@ type loginState struct {
     ExpiresAt time.Time
 }
 
+type operatorUserRow struct {
+    ID          string
+    DisplayName string
+    Status      string
+}
+
+type operatorSessionRow struct {
+    OperatorID         string
+    DisplayName        string
+    OperatorStatus     string
+    PermissionSnapshot string
+    ExpiresAt          time.Time
+}
+
+func (row *operatorUserRow) destinations() []any {
+    return []any{&row.ID, &row.DisplayName, &row.Status}
+}
+
+func (row *operatorSessionRow) destinations() []any {
+    return []any{&row.OperatorID, &row.DisplayName, &row.OperatorStatus, &row.PermissionSnapshot, &row.ExpiresAt}
+}
+
+func (row operatorSessionRow) principal(now time.Time) (Principal, bool) {
+    if row.OperatorStatus != "ACTIVE" || !now.Before(row.ExpiresAt) {
+        return Principal{}, false
+    }
+    var permissions []string
+    if json.Unmarshal([]byte(row.PermissionSnapshot), &permissions) != nil {
+        return Principal{}, false
+    }
+    result := Principal{OperatorID: row.OperatorID, DisplayName: row.DisplayName, Permissions: map[string]struct{}{}, ExpiresAt: row.ExpiresAt.UTC()}
+    for _, permission := range permissions {
+        if _, allowed := permissionAllowlist[permission]; allowed {
+            result.Permissions[permission] = struct{}{}
+        }
+    }
+    return result, true
+}
+
 func New(ctx context.Context, db *sql.DB, configuration config.AuthConfig) (*Service, error) {
     provider, err := oidc.NewProvider(ctx, configuration.IssuerURL)
     if err != nil {
@@ -235,23 +274,12 @@ func (s *Service) authenticate(r *http.Request) (Principal, bool) {
     if token == "" {
         return Principal{}, false
     }
-    var operatorID, displayName, status, permissionsJSON string
-    var expiry time.Time
-    err := s.db.QueryRowContext(r.Context(), "SELECT u.id, u.display_name, u.status, s.permission_snapshot, s.expires_at FROM operator_sessions s JOIN operator_users u ON u.id = s.operator_user_id WHERE s.session_token_hash = $1 AND s.revoked_at IS NULL", digest(token)).Scan(&operatorID, &displayName, &status, &permissionsJSON, &expiry)
-    if err != nil || status != "ACTIVE" || !time.Now().Before(expiry) {
+    var row operatorSessionRow
+    err := s.db.QueryRowContext(r.Context(), "SELECT u.id, u.display_name, u.status, s.permission_snapshot, s.expires_at FROM operator_sessions s JOIN operator_users u ON u.id = s.operator_user_id WHERE s.session_token_hash = $1 AND s.revoked_at IS NULL", digest(token)).Scan(row.destinations()...)
+    if err != nil {
         return Principal{}, false
     }
-    var permissions []string
-    if json.Unmarshal([]byte(permissionsJSON), &permissions) != nil {
-        return Principal{}, false
-    }
-    result := Principal{OperatorID: operatorID, DisplayName: displayName, Permissions: map[string]struct{}{}, ExpiresAt: expiry.UTC()}
-    for _, permission := range permissions {
-        if _, allowed := permissionAllowlist[permission]; allowed {
-            result.Permissions[permission] = struct{}{}
-        }
-    }
-    return result, true
+    return row.principal(time.Now())
 }
 
 func (s *Service) validCSRF(r *http.Request, operatorID string) bool {
@@ -273,11 +301,11 @@ func (s *Service) validCSRF(r *http.Request, operatorID string) bool {
 }
 
 func (s *Service) activeOperator(ctx context.Context, subject string) (string, string, error) {
-    var id, displayName, status string
-    if err := s.db.QueryRowContext(ctx, "SELECT id, display_name, status FROM operator_users WHERE external_subject = $1", subject).Scan(&id, &displayName, &status); err != nil || status != "ACTIVE" {
+    var row operatorUserRow
+    if err := s.db.QueryRowContext(ctx, "SELECT id, display_name, status FROM operator_users WHERE external_subject = $1", subject).Scan(row.destinations()...); err != nil || row.Status != "ACTIVE" {
         return "", "", errors.New("operator unavailable")
     }
-    return id, displayName, nil
+    return row.ID, row.DisplayName, nil
 }
 
 func (s *Service) sessionToken(r *http.Request) string {

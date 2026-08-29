@@ -5,9 +5,12 @@ import (
     "io"
     "log/slog"
     "net/http"
+    "time"
 
     "github.com/gin-gonic/gin"
 )
+
+const readinessTimeout = 2 * time.Second
 
 func registerHealthRoutes(router *gin.Engine, database readinessChecker, logger *slog.Logger) {
     router.GET("/health", func(c *gin.Context) {

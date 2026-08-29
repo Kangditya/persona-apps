@@ -200,6 +200,20 @@ HTTP_PORT=18080 make dev-api
 
 The selected API address should be used by any local frontend API configuration that needs to call the server.
 
+### Swagger UI
+
+With the Go API running, open `http://127.0.0.1:8080/swagger` (or the port
+selected by `make dev-api`). The page offers the separate Storefront and
+Operations contracts and loads both YAML files from the same API origin. Its
+“Try it out” requests use the local API even though the contracts retain their
+deployment placeholder server URL.
+
+The API locates the contracts from the repository root, the API working
+directory, or `OPENAPI_DIR` when the binary is launched from another location.
+The page loads the official Swagger UI browser assets from the pinned major
+version on unpkg; an air-gapped deployment should vendor those assets as a
+separate deployment task.
+
 ## Shared UI and PWA foundation
 
 Both applications consume the domain-agnostic `@persona-apps/ui` workspace
@@ -267,6 +281,38 @@ curl http://127.0.0.1:8081/ready
 ```
 
 `/ready` requires PostgreSQL to be running.
+
+## Planned API response envelope
+
+The current `/api/public/v1` and `/api/operations/v1` payloads remain unchanged.
+The proposed envelope is a future versioned contract change, not a behavior of
+the current API:
+
+```json
+{
+  "success": true,
+  "data": { "actual": "response DTO" },
+  "error": null,
+  "metadata": {
+    "timestamp": "2026-08-29T12:34:56Z",
+    "request_id": "req_..."
+  }
+}
+```
+
+The recommended migration keeps `data` and `error` present with `null` in the
+non-applicable branch, uses an RFC 3339 UTC timestamp, and mirrors the
+`X-Request-ID` value in `metadata.request_id`. List endpoints should define an
+endpoint DTO such as `{ "items": [], "page": {} }` inside `data` rather than
+creating an ambiguous `data.data` shape. Errors keep a safe public code,
+message, and details object; internal causes stay in structured logs.
+
+Before implementation, accept an ADR that introduces a v2 route or equivalent
+explicit compatibility boundary. Then centralize success/error writers, update
+both OpenAPI contracts and the frontend API parser, and handle idempotency
+replays so a replay keeps the original result but receives the current request
+ID and timestamp. Redirects, `204 No Content`, and health/readiness probes stay
+protocol-specific exceptions unless a later decision says otherwise.
 
 ## Run the complete local stack
 

@@ -55,7 +55,7 @@ No migration was applied to staging or production.
 
 - `apps/api/cmd/db` provides migration validation/status/version/up/bounded
   down/create, seed list/status/run, and setup commands.
-- `internal/database/seeder` provides ordered reference/development groups,
+- `internal/platform/database/seeder` provides ordered reference/development groups,
   per-seed transactions, idempotent history, and environment guards.
 
 ## Verified

@@ -98,21 +98,14 @@ persona-apps/
 │       │   ├── api/
 │       │   └── worker/
 │       ├── internal/
-│       │   ├── platform/
-│       │   ├── event/
-│       │   ├── identity/
-│       │   ├── offering/
-│       │   ├── purchasing/
-│       │   ├── payment/
-│       │   ├── saving/
-│       │   ├── giveaway/
-│       │   ├── participant/
-│       │   ├── livestock/
-│       │   ├── allocation/
-│       │   ├── slaughter/
-│       │   ├── distribution/
-│       │   ├── notification/
-│       │   └── reporting/
+│       │   ├── app/
+│       │   ├── config/
+│       │   ├── modules/
+│       │   │   ├── event/
+│       │   │   ├── identity/
+│       │   │   ├── offering/
+│       │   │   └── purchasing/
+│       │   └── platform/
 │       ├── migrations/
 │       └── go.mod
 ├── packages/
@@ -211,25 +204,15 @@ The initial backend is one deployable modular monolith with optional worker proc
 Each module should follow explicit layers without requiring excessive abstraction.
 
 ```text
-internal/<module>/
+internal/modules/<module>/
 ├── domain/
-│   ├── entity.go
-│   ├── value_object.go
-│   ├── policy.go
-│   ├── errors.go
-│   └── events.go
 ├── application/
-│   ├── commands/
-│   ├── queries/
-│   └── ports.go
-├── adapter/
-│   ├── http/
-│   ├── postgres/
-│   └── integration/
+├── infrastructure/persistence/
+├── transport/http/
 └── module.go
 ```
 
-A smaller module may use fewer files. Layer boundaries matter more than folder ceremony.
+A smaller module may use fewer files. Layer boundaries matter more than folder ceremony. Modules without an implemented vertical slice are not created as empty shells.
 
 ### Dependency Direction
 
@@ -571,7 +554,60 @@ Public and operations APIs may share application services but must have separate
 }
 ```
 
-## 10.4 Command and Query Separation
+## 10.4 Proposed Response Envelope (Not Yet Implemented)
+
+The current `/api/public/v1` and `/api/operations/v1` contracts remain the
+active response contract. A future envelope must not silently replace those
+payloads because the change affects every consumer, the OpenAPI documents, and
+encrypted idempotency replay bodies.
+
+The recommended stable JSON shape for future versioned JSON endpoints is:
+
+```json
+{
+  "success": true,
+  "data": { "actual": "response DTO" },
+  "error": null,
+  "metadata": {
+    "timestamp": "2026-08-29T12:34:56Z",
+    "request_id": "req_..."
+  }
+}
+```
+
+Error responses use the same keys with `success: false`, `data: null`, and an
+`error` object containing the safe public `code`, `message`, and `details`.
+Keeping both nullable branches present gives clients one predictable shape;
+`metadata.timestamp` is RFC 3339 UTC and `metadata.request_id` mirrors the
+`X-Request-ID` response header.
+
+The migration plan is:
+
+1. Accept an ADR and consumer inventory that chooses an explicit v2 route
+   boundary (recommended) or another equally explicit compatibility mechanism;
+   leave v1 unchanged during rollout.
+2. Add one transport-level success/error writer in `platform/httpx` and make
+   the response metadata from the existing request-ID context and one server
+   clock source. Do not put envelope logic in domains or application services.
+3. Define endpoint response DTOs for v2. List responses should put items and
+   pagination together inside `data`, for example `{ "items": [], "page": {} }`,
+   instead of producing `data.data`.
+4. Update the two OpenAPI contracts, the shared frontend response parser, and
+   focused route/error tests together. Redirects, `204 No Content`, and
+   health/readiness probes remain protocol-specific exceptions unless the ADR
+   expands the envelope boundary.
+5. Rework idempotency replay serialization: preserve the original status and
+   business result, but refresh the replay response's timestamp and request ID
+   for the current transport attempt. Never use a request ID as an idempotency
+   key or expose internal failure causes in `error.details`.
+6. Roll out read endpoints first, then retry-sensitive commands, comparing v1
+   and v2 results while monitoring client parse failures, error rates, and
+   replay behavior before deprecating v1.
+
+This section is a plan only; it does not change the current API payloads or
+OpenAPI contracts.
+
+## 10.5 Command and Query Separation
 
 Strict CQRS is not required.
 
@@ -1147,16 +1183,16 @@ The product capability map is not a direct one-to-one folder mandate, but it def
 ```text
 Product Capability              Backend Module
 ────────────────────────────────────────────────
-Storefront                      transport/public + frontend
-Purchasing                      purchasing
-Party & Participant             identity + participant
+Storefront                      module transport/public + frontend
+Purchasing                      modules/purchasing
+Party & Participant             modules/identity + future participant module
 Payment & Funding               payment + saving + giveaway
 Livestock                       livestock
 Allocation                      allocation
 Event Operations                event + slaughter
 Distribution                    distribution
 Identity & Access               identity + platform/auth
-Administration & Reporting      reporting + operations transport
+Administration & Reporting      future reporting + operations transport
 ```
 
 ### Rules
@@ -1250,3 +1286,67 @@ Storefront Next.js PWA                    Operations Next.js PWA
 The topology is one deployment boundary unless measured evidence requires
 separation. It adds no broker, Redis, microservice, native mobile application,
 or WebSocket to the MVP.
+
+---
+
+## 30. Backend Development Navigation
+
+Implemented backend capabilities live under
+`apps/api/internal/modules/<module>`. A module owns its domain rules,
+application services, persistence adapter, HTTP transport, tests, and explicit
+composition point. Do not create a module directory until an implemented
+vertical slice needs it.
+
+### Add a new module
+
+```text
+create module
+→ define domain and application boundary
+→ implement module-owned persistence
+→ implement public or Operations HTTP handler
+→ register module routes in transport/http/routes.go
+→ wire the module in internal/app/dependencies.go
+→ add domain, application, persistence, transport, and end-to-end tests
+```
+
+### Add an endpoint to an existing module
+
+Typical changes stay inside the owning module:
+
+```text
+transport/http/routes.go     route and middleware declaration
+transport/http/request.go    request decoding and transport validation
+transport/http/handler.go    HTTP boundary and application-service call
+transport/http/response.go   response mapping and contract shape
+application/service.go       business orchestration and transaction boundary
+infrastructure/persistence/ repository query or command
+*_test.go                    focused boundary and integration coverage
+```
+
+Only `internal/app/bootstrap.go` changes when the endpoint requires a new
+surface-wide middleware policy or a new public/Operations route group.
+
+### Dependency rules
+
+```text
+transport/http → application → domain
+infrastructure/persistence → application/domain ports
+internal/app → module.go composition points
+```
+
+Gin belongs only at the transport and bootstrap boundaries. Domain and
+application packages must not import Gin, PostgreSQL drivers, provider SDKs,
+or frontend contracts. Persistence must not import HTTP transport packages.
+Cross-module dependencies must be deliberate domain/application relationships;
+modules must never import another module's transport package.
+
+### Public and Operations route ownership
+
+`internal/app/bootstrap.go` creates the separate
+`/api/public/v1` and `/api/operations/v1` Gin groups and applies surface-wide
+CORS, cache, rate-limit, request-ID, recovery, and authentication boundaries.
+Each module's `transport/http/routes.go` registers its endpoints into the
+appropriate group. Permission-specific Operations authorization remains on
+the endpoint registration because different routes require different
+permissions. Public and Operations request/response types remain separate
+inside the owning HTTP transport package.

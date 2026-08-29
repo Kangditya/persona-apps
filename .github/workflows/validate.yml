@@ -78,4 +78,4 @@ jobs:
           go run ./cmd/db migrate version
 
       - run: docker compose -f infrastructure/compose.yaml config
-      - run: docker build -f apps/api/Dockerfile apps/api
+      - run: docker build -f apps/api/Dockerfile .

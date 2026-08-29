@@ -15,11 +15,12 @@ import (
 
     "github.com/DATA-DOG/go-sqlmock"
     "github.com/Kangditya/persona-apps/apps/api/internal/config"
-    "github.com/Kangditya/persona-apps/apps/api/internal/event"
-    "github.com/Kangditya/persona-apps/apps/api/internal/offering"
+    eventmodule "github.com/Kangditya/persona-apps/apps/api/internal/modules/event"
+    identitymodule "github.com/Kangditya/persona-apps/apps/api/internal/modules/identity"
+    offeringmodule "github.com/Kangditya/persona-apps/apps/api/internal/modules/offering"
+    purchasingmodule "github.com/Kangditya/persona-apps/apps/api/internal/modules/purchasing"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/auth"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/idempotency"
-    "github.com/Kangditya/persona-apps/apps/api/internal/purchasing"
 )
 
 type pingFunc func(context.Context) error
@@ -200,7 +201,13 @@ func TestServerComposesPublicEventRepository(t *testing.T) {
             AddRow("11111111-1111-1111-1111-111111111111", 2026, "Qurban 2026", "ACTIVE", now, now.Add(time.Hour), 100, 1, now, now))
 
     logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-    server := newTestServer(t, database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20})
+    server, err := NewServer(":0", logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, Dependencies{
+        Database: database,
+        Event:    eventmodule.NewModule(database, idempotency.Cipher{}, logger),
+    })
+    if err != nil {
+        t.Fatal(err)
+    }
     response := httptest.NewRecorder()
     server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/public/v1/events/active", nil))
 
@@ -227,7 +234,12 @@ func TestServerRegistersOperationsEventAndOfferingRoutesBehindAuthentication(t *
         t.Fatal(err)
     }
     logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, authentication, event.NewOperationsHandler(database, cipher, logger), offering.NewOperationsHandler(database, cipher, logger), purchasing.NewOperationsHandler(database, logger))
+    events := eventmodule.NewModule(database, cipher, logger)
+    offerings := offeringmodule.NewModule(database, events.Service(), cipher, logger)
+    purchases := purchasingmodule.NewModule(database, identitymodule.NewModule().Service(), cipher, logger)
+    server, err := NewServer(":0", logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, Dependencies{
+        Database: database, Auth: authentication, Event: events, Offering: offerings, Purchasing: purchases,
+    })
     if err != nil {
         t.Fatal(err)
     }
@@ -301,7 +313,7 @@ func newTestAuthentication(t *testing.T, database *sql.DB) *auth.Service {
 
 func newTestServer(t *testing.T, database readinessChecker, logger *slog.Logger, public config.PublicConfig) *http.Server {
     t.Helper()
-    server, err := NewServer(":0", database, logger, public, nil, nil, nil, nil, nil)
+    server, err := NewServer(":0", logger, public, Dependencies{Database: database})
     if err != nil {
         t.Fatal(err)
     }

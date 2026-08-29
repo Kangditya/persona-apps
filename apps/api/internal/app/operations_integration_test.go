@@ -17,8 +17,8 @@ import (
     "time"
 
     "github.com/Kangditya/persona-apps/apps/api/internal/config"
-    "github.com/Kangditya/persona-apps/apps/api/internal/event"
-    "github.com/Kangditya/persona-apps/apps/api/internal/offering"
+    eventmodule "github.com/Kangditya/persona-apps/apps/api/internal/modules/event"
+    offeringmodule "github.com/Kangditya/persona-apps/apps/api/internal/modules/offering"
     platformdb "github.com/Kangditya/persona-apps/apps/api/internal/platform/database"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/idempotency"
     "github.com/gin-gonic/gin"
@@ -52,7 +52,9 @@ func TestOperationsCommandsPostgreSQL(t *testing.T) {
     }
     logger := slog.New(slog.NewTextHandler(io.Discard, nil))
     authentication := newTestAuthentication(t, database)
-    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, authentication, event.NewOperationsHandler(database, cipher, logger), offering.NewOperationsHandler(database, cipher, logger), nil)
+    events := eventmodule.NewModule(database, cipher, logger)
+    offerings := offeringmodule.NewModule(database, events.Service(), cipher, logger)
+    server, err := NewServer(":0", logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, Dependencies{Database: database, Auth: authentication, Event: events, Offering: offerings})
     if err != nil {
         t.Fatal(err)
     }

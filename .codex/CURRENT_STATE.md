@@ -168,6 +168,13 @@ Implemented:
 apps/api
 ```
 
+The implemented backend modules are organized under
+`apps/api/internal/modules/{event,identity,offering,purchasing}`. Each module
+keeps its domain, application service, persistence adapter, HTTP transport, and
+module composition point together. Technical database lifecycle tooling lives
+under `apps/api/internal/platform/database`; application bootstrap and route
+surface composition live under `apps/api/internal/app`.
+
 Current backend capabilities:
 
 - Go API process;
@@ -176,7 +183,9 @@ Current backend capabilities:
 - graceful shutdown;
 - Air-compatible local live-reload configuration;
 - PostgreSQL connectivity;
-- Docker image build.
+- Docker image build;
+- Swagger UI at `/swagger`, serving the canonical Storefront and Operations
+  OpenAPI YAML contracts from the Go API.
 - guest `GET /api/public/v1/events/active`, Event Offering-list, and Offering
   detail routes with active/published filtering;
 - guest `POST /api/public/v1/purchases` for one-Offering `COMMON` checkout:
@@ -527,7 +536,7 @@ Current replacements:
 
 ## Current Verification State
 
-Last recorded implementation verification: **2026-08-28**
+Last recorded implementation verification: **2026-08-29**
 
 The product/architecture and frontend-artifact alignment has been verified
 with:
@@ -543,6 +552,20 @@ migration/seed/down/up cycle, Compose validation, and an API container build.
 The composed Operations regression proves exact audit, outbox, and replay
 effects plus public active/published visibility and historical Event quota and
 Offering price values.
+
+The API modular-architecture refactor is implemented on
+`feature/api-gin-modular-architecture`. `make validate`, database-enabled
+`go test -count=1 ./...` against disposable PostgreSQL 18, focused API/module
+race tests, `go vet ./...`, `go build ./...`, `make db-validate`, migration
+rollback/reapply, Compose validation, and structural dependency checks passed.
+The refactor keeps the OpenAPI contracts and migration SQL unchanged; only
+obsolete empty directory markers were removed.
+
+The Swagger UI slice is implemented at `/swagger` on the Go API. It serves the
+canonical Storefront and Operations YAML files, keeps the current v1 payloads
+unchanged, packages the contracts in the API image, and was verified with the
+focused Swagger tests, the full Go suite, `make validate`, a root-context
+container build, and a live container/browser check of both definitions.
 
 Redocly CLI 2.46.1 validates both OpenAPI contracts with no errors; six
 pre-existing documentation warnings remain. Production pnpm audit reports no
@@ -572,9 +595,8 @@ The W3-07 verification run passed Storefront tests (10 files, 31 tests),
 Storefront typecheck, Oxlint, production build, generated checkout route,
 representative desktop/360px browser checks, and the full database-enabled Go
 suite against a disposable PostgreSQL database. `make lint typecheck test
-build compose-check` is green across both frontends and the API. The current
-`make validate` command remains blocked only by the repository's pre-existing
-Go formatter drift; no unrelated Go files were changed to hide that blocker.
+build compose-check` and the current `make validate` command are green across
+both frontends and the API.
 
 The earlier W2 repository-wide validation evidence remains historical. The
 current W3-07 run also passes `git diff --check` and introduces no dependency

@@ -5,7 +5,7 @@ import (
     "fmt"
     "os"
 
-    "github.com/Kangditya/persona-apps/apps/api/internal/database/cli"
+    "github.com/Kangditya/persona-apps/apps/api/internal/platform/database/cli"
 )
 
 func main() {

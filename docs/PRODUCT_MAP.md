@@ -77,9 +77,9 @@ Purchasing
 ### Backend Ownership
 
 ```text
-apps/api/internal/purchasing
-apps/api/internal/saving
-apps/api/internal/giveaway
+apps/api/internal/modules/purchasing
+apps/api/internal/modules/saving
+apps/api/internal/modules/giveaway
 ```
 
 ### Core Rule
@@ -109,8 +109,8 @@ Party & Participant
 ### Backend Ownership
 
 ```text
-apps/api/internal/identity
-apps/api/internal/participant
+apps/api/internal/modules/identity
+apps/api/internal/modules/participant
 ```
 
 ### Core Rule
@@ -137,9 +137,9 @@ Payment & Funding
 ### Backend Ownership
 
 ```text
-apps/api/internal/payment
-apps/api/internal/saving
-apps/api/internal/giveaway
+apps/api/internal/modules/payment
+apps/api/internal/modules/saving
+apps/api/internal/modules/giveaway
 ```
 
 ### Notes
@@ -165,7 +165,7 @@ Livestock
 ### Backend Ownership
 
 ```text
-apps/api/internal/livestock
+apps/api/internal/modules/livestock
 ```
 
 ### Core Lifecycle
@@ -199,7 +199,7 @@ Allocation
 ### Backend Ownership
 
 ```text
-apps/api/internal/allocation
+apps/api/internal/modules/allocation
 ```
 
 ### Core Rule
@@ -227,8 +227,8 @@ Event Operations
 ### Backend Ownership
 
 ```text
-apps/api/internal/event
-apps/api/internal/slaughter
+apps/api/internal/modules/event
+apps/api/internal/modules/slaughter
 ```
 
 ### Application Ownership
@@ -271,7 +271,7 @@ Distribution
 ### Backend Ownership
 
 ```text
-apps/api/internal/distribution
+apps/api/internal/modules/distribution
 ```
 
 ### Open Scope
@@ -300,7 +300,7 @@ Identity & Access
 ### Ownership
 
 ```text
-apps/api/internal/identity
+apps/api/internal/modules/identity
 apps/api/internal/platform/auth
 ```
 
@@ -335,8 +335,8 @@ apps/operations-web
 ### Backend Ownership
 
 ```text
-apps/api/internal/reporting
-apps/api/internal/* application queries
+apps/api/internal/modules/reporting
+apps/api/internal/modules/* application queries
 ```
 
 Administration is a user interface capability over authoritative domains. It must not become a single unrestricted `admin` domain.
@@ -379,7 +379,7 @@ apps/operations-web
 ### Go API
 
 ```text
-apps/api/internal/
+apps/api/internal/modules/
 ├── event/
 ├── identity/
 ├── offering/

@@ -172,16 +172,15 @@ REQUIRED:
 
 EMERGING:
 
-- A business vertical slice may use internal/<module>/domain, application, and
+- A business vertical slice may use internal/modules/<module>/domain, application, and
   adapter layers only where it owns meaningful behavior. The architecture
   describes this direction, but no business module is implemented yet.
 - Keep transport request/response DTOs, application inputs/outputs, domain
   objects, persistence rows, and frontend view models distinct at their
   boundaries. Map them explicitly; do not leak table rows or transport structs
   as domain contracts.
-- The existing empty internal/modules directory is baseline, not a required
-  module pattern. Do not add empty module shells or refactor it solely for
-  symmetry.
+- Implemented business modules live under internal/modules/<module>. Do not add
+  empty module shells or refactor modules solely for symmetry.
 
 ### 4.2 HTTP contracts, errors, and compatibility
 

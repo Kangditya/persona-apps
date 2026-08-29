@@ -1148,7 +1148,7 @@ creation, and bounded rollback as explicit commands; do not run them from API
 startup.
 
 Seed execution is a separate ordered registry under
-`apps/api/internal/database/seeder`. Reference and development seeds use
+`apps/api/internal/platform/database/seeder`. Reference and development seeds use
 separate groups and independent `schema_seeds` history. Development seeds are
 allowed only in development/test, while staging/production `--all` selects
 reference seeds only. Rollback outside development/test requires an explicit
