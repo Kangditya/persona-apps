@@ -8,6 +8,6 @@
   "exports": {
     "./base.json": "./base.json",
     "./library.json": "./library.json",
-    "./vite-react.json": "./vite-react.json"
+    "./nextjs.json": "./nextjs.json"
   }
 }

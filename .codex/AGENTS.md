@@ -44,9 +44,14 @@ docs/PRD.md
 docs/PRODUCT_MAP.md
 docs/ARCHITECTURE.md
 docs/DECISIONS.md
+docs/CONVENTIONS.md
 .codex/CURRENT_STATE.md
 .codex/TASK.md
 ```
+
+`MVP-DELIVERY-ROADMAP.md` is the approved delivery-plan baseline. It does not
+override canonical product or architecture decisions and is not implementation
+evidence.
 
 Document responsibilities:
 
@@ -56,20 +61,99 @@ Document responsibilities:
 | `docs/PRODUCT_MAP.md` | Capability hierarchy, roadmap, application ownership, and open requirements |
 | `docs/ARCHITECTURE.md` | Technical boundaries, runtime, data, API, and deployment architecture |
 | `docs/DECISIONS.md` | Accepted and superseded architecture decisions |
+| `docs/CONVENTIONS.md` | Engineering implementation rules, defaults, and enforcement |
 | `.codex/CURRENT_STATE.md` | Current implementation state and known gaps |
 | `.codex/TASK.md` | Current implementation objective and task-specific constraints |
 
-When documents conflict, use this priority:
+`.codex/TASK.md` is the active task file. Completed tasks are historical
+records under `.codex/archive/` and must not remain as the active task.
+
+`docs/CONVENTIONS.md` applies the established product, architecture, and
+decision boundaries. Keep it as the canonical engineering rulebook instead of
+duplicating broad implementation rules here.
+
+`.codex/plans/` may contain inactive future-task drafts. A draft is neither
+active nor approved for execution merely because it exists. Before activation,
+revalidate its dependencies, decisions, file paths, and acceptance criteria
+against current canonical documents and source, then copy exactly one reviewed
+draft into `.codex/TASK.md`. Execute only the active task and archive only an
+executed `.codex/TASK.md`; do not archive unexecuted drafts.
+
+When documents conflict, use this authority model:
 
 ```text
-Current TASK
-→ Accepted decisions
+PRD and Product Map
 → Architecture
-→ PRD and Product Map
-→ Existing implementation
+→ Accepted decisions
+→ Conventions for implementation defaults
+→ Existing implementation and state records
 ```
 
-Do not silently resolve material conflicts. Record them as plan risks or decision gaps.
+The current TASK defines the approved work scope but cannot silently override
+an accepted product, architecture, or decision document. Do not silently
+resolve material conflicts; record them as plan risks or decision gaps.
+
+---
+
+## Task Completion and Archival
+
+When an implementation task has been completed and its verification confirms
+that the objective was implemented, update the active `.codex/TASK.md` before
+finishing the task:
+
+1. Add this exact marker immediately below the task's H1 title:
+
+   ```text
+   ## Executed
+   ```
+
+2. Preserve the complete executed task content, including its objective,
+   constraints, plan requirements, verification requirements, and final status.
+3. Create the historical directory when it does not exist:
+
+   ```bash
+   mkdir -p .codex/archive
+   ```
+
+4. Copy the executed task into the archive using the canonical filename:
+
+   ```text
+   YYYY-MM-DD-TASK-<h1>.md
+   ```
+
+   `<h1>` is the task title text after `# Task:`, normalized into a stable
+   lowercase hyphen-separated filename component. For example:
+
+   ```text
+   # Task: Frontend API Layers for Operations and Storefront Web
+   → .codex/archive/2026-08-03-TASK-frontend-api-layers-for-operations-and-storefront-web.md
+   ```
+
+   Use the execution date in the local repository timezone. The archived file
+   must retain the `## Executed` marker.
+
+5. Use `cp` to create the archive copy, verify that the copy exists and matches
+   the active task, then remove the active task file:
+
+   ```bash
+   cp .codex/TASK.md .codex/archive/YYYY-MM-DD-TASK-<h1>.md
+   test -s .codex/archive/YYYY-MM-DD-TASK-<h1>.md
+   cmp .codex/TASK.md .codex/archive/YYYY-MM-DD-TASK-<h1>.md
+   rm .codex/TASK.md
+   ```
+
+6. Confirm that `.codex/TASK.md` is absent and that the archived filename is
+   unique. Do not overwrite an existing archive; choose a corrected title or
+   stop and report the collision.
+
+Do not archive a task merely because code was changed. Archive only after the
+implementation has been verified against the task's acceptance criteria and
+the final review distinguishes implemented, verified, assumed, and deferred
+behavior. If verification is incomplete or the task is abandoned, leave it as
+the active `.codex/TASK.md` and record the incomplete status instead.
+
+When starting a new implementation task, create a new `.codex/TASK.md` from
+the approved objective. Do not edit an archived task back into an active task.
 
 ---
 
@@ -92,6 +176,7 @@ Before planning:
    - `.codex/AGENTS.md` when present;
    - `.codex/TASK.md`;
    - `.codex/CURRENT_STATE.md`;
+   - `docs/CONVENTIONS.md` when present;
    - the relevant sections of canonical documents under `docs/`.
 
 2. Inspect only files relevant to the task.
@@ -267,7 +352,10 @@ Agent operating context:
 .codex/
 ├── AGENTS.md
 ├── CURRENT_STATE.md
-└── TASK.md
+├── TASK.md                 # active task only
+├── plans/                  # inactive future-task drafts
+└── archive/                # executed task records
+    └── YYYY-MM-DD-TASK-<h1>.md
 ```
 
 Do not create canonical product or architecture documents under `.codex/`.
@@ -390,6 +478,12 @@ Owns:
 - incidents;
 - completion.
 
+For the Full Event-Day MVP, one Event has exactly three or four inclusive local
+execution days in an explicit IANA timezone. Field teams, memberships, shifts,
+station/location assignments, readiness, handovers, incidents, and support
+escalation are Event-scoped records. Attendance supports `SELF`, `PROXY`, or
+`NONE` and never determines financial eligibility.
+
 Dashboards are projections over authoritative event and operational records.
 
 ### Distribution
@@ -403,6 +497,10 @@ Owns:
 - delivery;
 - proof;
 - completion.
+
+The Full Event-Day MVP covers both explicit Sohibul Qurban entitlement and
+beneficiary portions, with pickup or delivery, proof, exceptions, and
+completion. Route optimization remains out of scope.
 
 ### Identity & Access
 
@@ -431,7 +529,9 @@ Use:
 - Vite;
 - React;
 - TypeScript;
-- React Router;
+- React Router with Remix-style routing conventions;
+- TanStack Query for remote API/server state when a concrete vertical slice
+  requires it;
 - Tailwind CSS;
 - Vitest;
 - PWA-ready structure only when required.
@@ -457,7 +557,9 @@ Use:
 - Vite;
 - React;
 - TypeScript;
-- React Router;
+- React Router with Remix-style routing conventions;
+- TanStack Query for remote API/server state when a concrete vertical slice
+  requires it;
 - Tailwind CSS;
 - Vitest.
 
@@ -481,7 +583,8 @@ Use:
 - Go;
 - modular monolith architecture;
 - PostgreSQL;
-- standard-library-compatible HTTP architecture;
+- Gin as the canonical HTTP framework and router at the HTTP adapter/bootstrap
+  boundary, with net/http retained for server lifecycle and transport;
 - explicit domain, application, adapter, and transport boundaries.
 
 Do not introduce microservices without an accepted ADR.
@@ -535,13 +638,24 @@ src/
 Rules:
 
 1. Organize business UI by feature.
-2. Keep server state separate from local UI state.
-3. Do not place business rules inside route definitions.
-4. Do not make frontend validation authoritative.
-5. Handle loading, empty, error, stale, and conflict states explicitly.
-6. Do not expose operations-only fields through Storefront clients.
-7. Shared UI packages contain stable primitives, not application pages.
-8. Prefer direct checkout until cart requirements are confirmed.
+2. Use React Router for Remix-style route hierarchy, layouts, route boundaries,
+   navigation state, and route-data requirements without introducing a Remix
+   server runtime, SSR, or server actions.
+3. Keep server state separate from local UI state. TanStack Query owns remote
+   request lifecycle, caching, and invalidation after successful API commands;
+   it is not yet a dependency or runtime integration.
+4. Keep `src/routes/paths.ts` and `src/routes/routes.tsx` as centralized,
+   application-owned route registries. Feature routes register explicitly.
+5. Do not place business rules inside route definitions or TanStack Query
+   callbacks.
+6. Do not make frontend validation or cached query data authoritative.
+7. Handle loading, empty, error, stale, and `409 Conflict` states explicitly.
+8. Do not expose operations-only fields through Storefront clients.
+9. Shared UI packages contain stable primitives, not application pages.
+10. Prefer direct checkout until cart requirements are confirmed.
+11. Revalidate contested state with the Go API; cache data does not determine
+    payment status, quota, allocation capacity, saving balance, or queue
+    position.
 
 ---
 
@@ -550,13 +664,11 @@ Rules:
 Use module-oriented boundaries:
 
 ```text
-apps/api/internal/<module>/
+apps/api/internal/modules/<module>/
 ├── domain/
 ├── application/
-├── adapter/
-│   ├── postgres/
-│   ├── integration/
-│   └── http/
+├── infrastructure/persistence/
+├── transport/http/
 └── module.go
 ```
 
@@ -587,24 +699,16 @@ Domain packages must not depend on:
 
 ```text
 apps/api/internal/
-├── platform/
-├── event/
-├── identity/
-├── offering/
-├── purchasing/
-├── payment/
-├── saving/
-├── giveaway/
-├── participant/
-├── livestock/
-├── allocation/
-├── slaughter/
-├── distribution/
-├── notification/
-└── reporting/
+├── modules/
+│   ├── event/
+│   ├── identity/
+│   ├── offering/
+│   └── purchasing/
+└── platform/
 ```
 
-Do not create all modules as empty shells. Add a module when required by an implemented vertical slice.
+Do not create all modules as empty shells. Add a module under
+`internal/modules` only when required by an implemented vertical slice.
 
 ---
 
@@ -814,6 +918,22 @@ Rules:
 3. Dashboard state must not become the authoritative source.
 4. Commands must operate against transactional modules.
 5. Do not add WebSocket infrastructure merely for visual freshness.
+6. Full Event-Day SSE must reconnect from `Last-Event-ID` or an equivalent
+   durable cursor and retain polling as fallback.
+7. Commands continue through authenticated HTTP APIs and revalidate
+   authoritative state; they never mutate through a projection or stream.
+
+### Mobile and degraded-connectivity rules
+
+1. The responsive Next.js PWAs are the MVP mobile clients.
+2. Every QR/barcode-assisted critical flow has manual code entry fallback.
+3. Ordinary service-worker caching excludes API/authentication/business data.
+4. Only ADR-055 allowlisted non-financial field milestones may queue locally.
+5. Queued milestones use minimum non-sensitive payloads, bounded retention,
+   idempotency, visible pending state, operator-confirmed replay, and conflict
+   presentation.
+6. Payment, evidence, identity, permission, Event/team configuration, capacity
+   override, credentials, and other sensitive commands remain online-only.
 
 ---
 

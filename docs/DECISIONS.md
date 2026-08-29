@@ -123,14 +123,14 @@ The two applications differ in:
 
 ## ADR-003: Use Vite and React
 
-**Status:** Accepted
+**Status:** Superseded by ADR-047
 
 Both frontend applications use:
 
 - Vite;
 - React;
 - TypeScript;
-- React Router.
+- React Router with Remix-style routing conventions.
 
 ### Rationale
 
@@ -149,22 +149,27 @@ Vite provides:
 - Public SEO requirements must be reassessed before they become critical.
 - Server rendering should not be introduced without a documented requirement.
 - Backend contracts remain independent of frontend framework details.
+- Remix-style route hierarchy, layouts, route boundaries, navigation state, and
+  route-data requirements are designed in the frontend while runtime delivery
+  remains a Vite-served SPA. This does not adopt a Remix server runtime.
 
 ---
 
 ## ADR-004: Use central route registries
 
-**Status:** Accepted
+**Status:** Accepted, amended by ADR-047
 
-Each frontend application owns centralized route definitions.
+Each frontend application owns centralized URL definitions and route files.
 
 Recommended structure:
 
 ```text
 src/routes/
-├── paths.ts
-├── routes.tsx
-└── guards.tsx
+└── paths.ts
+
+src/app/
+├── layout.tsx
+└── <route>/page.tsx
 ```
 
 ### Rationale
@@ -174,16 +179,20 @@ Central route ownership prevents duplicated path strings and inconsistent author
 ### Consequences
 
 - URL builders must use centralized path definitions.
+- Next.js App Router filesystem entries register routes; do not duplicate them
+  in a parallel route table.
 - Route guards must not replace backend authorization.
-- Feature modules may contribute routes through explicit registration.
+- Route modules must declare their public or operations API-surface ownership.
+- Route data requirements must not expose operations-only DTOs through
+  Storefront.
 
 ---
 
 ## ADR-005: Use Tailwind CSS
 
-**Status:** Accepted
+**Status:** Accepted, integration amended by ADR-047
 
-Use Tailwind CSS v4 through the Vite integration.
+Use Tailwind CSS v4 through the framework-supported PostCSS integration.
 
 Initial setup should remain minimal:
 
@@ -1093,3 +1102,678 @@ Event
 - Avoid implementing all database tables or all frontend shells before one complete flow works.
 - Every slice must include authorization, audit, validation, and tests appropriate to its risk.
 - Phase ordering may change based on discovery, but capability boundaries remain stable.
+
+---
+
+## ADR-039: Use TanStack Query for frontend server state
+
+**Status:** Accepted
+
+Use `@tanstack/react-query` for remote API/server state when the first
+frontend vertical slice introduces real API reads or commands. React Router
+continues to own navigation; TanStack Query owns request lifecycle, caching,
+invalidation, and explicit server-state rendering.
+
+### Rationale
+
+The two applications need consistent handling for asynchronous API data
+without treating component state or browser caches as domain truth. TanStack
+Query provides a focused boundary between remote state and local UI state
+while keeping the Go API authoritative.
+
+### Consequences
+
+- This decision does not add a dependency or runtime provider until a concrete
+  vertical slice needs remote data.
+- Query keys must use stable public API identifiers and explicit event context.
+- Successful commands invalidate or update relevant query data only after a
+  successful API response; cache invalidation is not a correctness mechanism.
+- The UI must render loading, empty, error, stale, and `409 Conflict` states
+  explicitly.
+- Cache data must not authoritatively determine payment status, quota,
+  allocation capacity, saving balance, or queue position; contested operations
+  are always revalidated by the Go API.
+- This decision does not adopt TanStack Router, Table, Form, or other TanStack
+  libraries.
+
+---
+
+## ADR-040: Use an explicit Go-owned database lifecycle command
+
+**Status:** Accepted
+
+Use `golang-migrate/migrate/v4` from `apps/api/cmd/db` to execute the existing
+numbered PostgreSQL migration pairs. Keep migration execution, inspection,
+creation, and bounded rollback as explicit commands; do not run them from API
+startup.
+
+Seed execution is a separate ordered registry under
+`apps/api/internal/platform/database/seeder`. Reference and development seeds use
+separate groups and independent `schema_seeds` history. Development seeds are
+allowed only in development/test, while staging/production `--all` selects
+reference seeds only. Rollback outside development/test requires an explicit
+`ALLOW_DESTRUCTIVE_DB_COMMANDS=true` opt-in.
+
+### Rationale
+
+The existing `NNNN_name.up.sql`/`.down.sql` files already match
+`golang-migrate`'s PostgreSQL source format. Reusing them avoids a second SQL
+engine and preserves historical migration files. Separate seed history keeps
+deterministic bootstrap data independent from schema version state.
+
+### Consequences
+
+- `schema_migrations` and PostgreSQL advisory locking provide migration state
+  and serialization.
+- `schema_seeds` records successful seed names only; changed seed definitions
+  require a new immutable name because checksums are not needed yet.
+- `db setup` applies migrations and reference seeds only.
+- Dirty-version recovery (`force`) and arbitrary navigation (`goto`) remain
+  deferred until an operational recovery policy and disposable-DB verification
+  exist.
+
+---
+
+## ADR-041: Use command-scoped idempotency with domain-specific duplicate guards
+
+**Status:** Accepted
+
+Retry safety belongs to the command that owns a business effect. Do not add an
+`idempotency_key` column to every aggregate, history table, audit record, or
+outbox event.
+
+Use `idempotency_records` as the shared replay ledger for retry-sensitive API
+commands. Its `(namespace, idempotency_key)` primary key identifies one caller
+intent, while `request_hash` prevents the same key from being reused for a
+different request. The namespace must identify the API surface, command, and
+stable caller scope without introducing hypothetical tenancy.
+
+### Command replay contract
+
+- Authenticate and authorize the caller before returning a stored response.
+- The first request inserts its idempotency record and performs the domain
+  mutation in one PostgreSQL transaction.
+- Domain state, status history, audit records, outbox events, and the replayable
+  response are committed together.
+- The same namespace, key, and request hash returns the stored status and body
+  without executing the command again.
+- The same namespace and key with a different request hash returns a conflict.
+- The primary-key conflict serializes concurrent duplicates; after the winning
+  transaction commits, the duplicate reads and replays its result. A rolled
+  back transaction leaves no completed replay record.
+- Transient infrastructure failures are not stored as completed outcomes.
+- Retention is command-specific and must not expire a key while a duplicate
+  business effect would still be unacceptable.
+
+### Domain-specific guards
+
+- `financial_ledger_entries.idempotency_key` remains the direct effect-level
+  guard for append-only financial writes. A command producing multiple entries
+  derives a unique entry key for each leg from the command key.
+- Provider references, purchase-source uniqueness, participant sequence,
+  active-allocation constraints, current-location constraints, and one-record
+  operational constraints remain natural duplicate guards.
+- Version columns, row locks, and atomic conditional updates handle stale or
+  contested state; they complement idempotency rather than replace it.
+- Status histories and `audit_log` do not receive independent idempotency keys.
+  They are written once inside the owning command transaction.
+- `outbox_events.id` is the delivery identity. Each consumer deduplicates by
+  event and consumer, or uses a naturally idempotent projection update. HTTP
+  response replay records are not reused as a generic consumer inbox.
+- Exact payment-webhook inbox fields remain deferred until a provider contract
+  defines the provider event identity, authentication, and reordering rules.
+
+### Consequences
+
+- Public and operations OpenAPI contracts expose `Idempotency-Key` only for
+  retry-sensitive commands, not every mutation.
+- A frontend or integration reuses one key for retries of the same user intent
+  and generates a new key for a new intent.
+- Business references are not treated as response-replay keys unless the
+  command contract explicitly defines them that way.
+- The existing schema is sufficient for the generic transactional replay
+  pattern and append-only ledger guard; this decision does not modify a
+  historical migration.
+- Provider inboxes, notification delivery attempts, and per-consumer receipts
+  are added only with the vertical slice that owns their behavior.
+
+---
+
+## ADR-042: Fix Phase 1 common-purchase commerce rules
+
+**Status:** Accepted
+
+Phase 1 common purchasing uses these rules:
+
+- Event lifecycle is
+  `DRAFT -> PUBLISHED -> ACTIVE <-> SUSPENDED -> CLOSED -> ARCHIVED`. Only
+  `PUBLISHED` becomes active; active events may be suspended or closed;
+  suspended events may be reactivated or closed; closed and archived events
+  cannot accept commerce commands. At most one Event is active.
+- An MVP Offering is an event-scoped sellable package, share, or category and
+  remains separate from physical Livestock.
+- One direct checkout creates one Purchase for one Offering. No Shopping Cart
+  or purchase-item aggregate is introduced.
+- Checkout snapshots Offering identity, price, currency, participant capacity,
+  and intended participant names.
+- Quota is participant units against both Event and Offering limits. Checkout
+  atomically creates a pending Purchase and a 24-hour reservation under row
+  locking or an equivalent atomic database guard.
+- Submitted payment evidence pauses reservation expiry until review.
+  Activation consumes the reservation. Expiry, cancellation, and rejection
+  release it. Resubmission after release must reacquire quota atomically.
+- Common-purchase evidence is append-oriented and stored as a private
+  object-storage reference with filename, media type, byte size, and SHA-256
+  metadata. PostgreSQL does not store evidence bytes.
+- Evidence accepts JPEG, PNG, or PDF up to 10 MiB and must declare the exact
+  outstanding amount. Lower or higher submissions are rejected; partial-payment
+  and balance policy is deferred.
+- Finance or Operations Managers verify or reject evidence. Verification locks
+  Payment, Purchase, and quota; revalidates amount, currency, status, and
+  capacity; then atomically marks Payment `VERIFIED`, records Purchase `PAID`
+  and `ELIGIBLE`, consumes quota, activates intended Sohibul Qurban exactly
+  once, and writes audit and outbox effects.
+- Rejection records a reason, releases quota, and leaves the Purchase pending.
+  A later evidence attempt must reacquire quota.
+
+### Consequences
+
+- W1-03 must add an additive schema migration for Offering quota, intended
+  participants, quota reservation attempts, evidence metadata, and required
+  integrity constraints without editing historical migrations.
+- W1-04 must define complete transition and permission matrices.
+- Retry-sensitive commands follow ADR-041. Participant activation additionally
+  uses natural uniqueness on `(purchase_id, sequence_no)`.
+- Storefront availability is advisory; checkout and quota reacquisition are
+  authoritative transactional commands.
+- Saving, Giveaway, refunds, provider callbacks, evidence retention,
+  multi-offering checkout, and livestock allocation remain separate decisions.
+
+---
+
+## ADR-043: Reuse standard HTTP and add OIDC-backed operations sessions
+
+**Status:** Accepted; its router choice is superseded by ADR-046
+
+### Decision
+
+The HTTP-router choice in this ADR is superseded by ADR-046. The authentication,
+session, CSRF, Purchase-token, and migration decisions below remain accepted.
+
+- Keep ADR-040's `golang-migrate/migrate/v4` command, numbered SQL pairs, and
+  separate seed lifecycle. API startup never runs migrations, and migrations
+  `0001` through `0004` remain historical files.
+- Phase 1 Storefront browsing and checkout remain guest-accessible. Purchase
+  creation returns a random opaque Purchase access token once, stores only its
+  SHA-256 hash, and requires the raw token as a Purchase-scoped Bearer
+  credential for tracking, cancellation, and evidence submission.
+- Operations uses provider-neutral OpenID Connect Authorization Code flow with
+  PKCE. The Go API uses `github.com/coreos/go-oidc/v3/oidc` for provider
+  discovery and ID-token verification and `golang.org/x/oauth2` for
+  Authorization Code and PKCE exchange.
+- The API explicitly validates state, nonce, and PKCE; maps the verified
+  single-issuer `sub` claim to `operator_users.external_subject`; and denies
+  unknown or inactive operators.
+- Successful login creates a random opaque server session. Only its SHA-256
+  hash is stored; the raw token is sent in a `Secure`, `HttpOnly`,
+  `SameSite=Lax`, host-only cookie. Sessions are revocable and expire no later
+  than the verified identity session.
+- Only allowlisted permission claims are snapshotted into the session. Backend
+  policies authenticate and authorize each request before command idempotency
+  lookup or replay.
+- Unsafe cookie-authenticated requests require an explicitly allowed Origin and
+  a matching `X-CSRF-Token`; only the CSRF token hash is stored.
+- Local passwords, password reset, account recovery, MFA implementation, and
+  provider administration remain outside the API. MFA may be required by the
+  configured identity provider.
+
+### Consequences
+
+- W1-03 must add session and Purchase-token hash storage through a new additive
+  migration; this decision does not edit existing migrations.
+- W1-06 adds the selected Go dependencies and runtime behavior. They are not
+  added during this documentation task.
+- Provider issuer, client credentials, redirect URL, permission claim, allowed
+  origins, cookie policy, and encryption keys are validated environment
+  configuration, never committed values.
+- Supporting multiple OIDC issuers requires a new identity-key decision because
+  the current operator mapping assumes one configured issuer.
+- Public accounts, Purchase-token recovery/rotation, operator provisioning,
+  permission administration, and event-scoped permissions remain deferred.
+
+---
+
+## ADR-044: Define Phase 1 lifecycle and permission policy
+
+**Status:** Accepted
+
+### Decision
+
+Commerce transitions, authorization requirements, guards, audit effects,
+outbox effects, retry handling, and rejection outcomes are authoritative in
+docs/domain/COMMERCE_LIFECYCLES.md. This policy implements the lifecycle
+rules accepted in ADR-042 without adding runtime behavior.
+
+The complete Phase 1 permission vocabulary is event.read, event.manage,
+offering.read, offering.manage, purchase.read, payment.read, payment.verify,
+participant.read, dashboard.read, audit.read, and admin.manage. Operations
+roles are provisioned with the fixed grants listed in
+docs/security/PERMISSIONS.md; no role management endpoint is introduced.
+
+OIDC login, callback, session inspection, and logout use the authentication
+and CSRF controls from ADR-043 rather than a business permission. Every
+other operations endpoint requires its mapped permission after session,
+Origin, and CSRF checks, and before idempotency replay. Storefront requests
+remain role-free and may use only the scoped Purchase access token accepted
+by ADR-043.
+
+Payment verification and rejection retain ADR-042's transactional behavior.
+Participant replacement or cancellation remains deferred; until a dedicated
+permission is accepted, any exceptional Phase 1 participant write requires
+admin.manage and an auditable reason.
+
+### Consequences
+
+W1-05 must expose only endpoints whose authorization maps to this vocabulary.
+W1-06 implements the documented enforcement and command behavior. This ADR
+does not add tables, Go dependencies, routes, or a generic idempotency store.
+
+---
+
+## ADR-045: Encrypt sensitive idempotent replay responses at rest
+
+**Status:** Accepted
+
+### Decision
+
+Some successful retry-sensitive commands return a raw credential that is
+intentionally unavailable from later read endpoints. Common-purchase checkout
+returns the opaque Purchase Bearer token once, while ADR-041 requires an exact
+retry to replay the committed response. Storing that response body as plaintext
+would persist the raw token and violate ADR-043.
+
+Store every replayable response body that contains raw credential material as
+an AES-256-GCM encrypted envelope in `idempotency_records.response_body`. The
+envelope records a key identifier, nonce, and ciphertext; it never stores a
+plaintext response body or raw credential. Additional authenticated data binds
+the command namespace, idempotency key, request hash, and response status.
+
+`IDEMPOTENCY_RESPONSE_KEYS` is an ordered, secret key ring of
+`key-id:base64-32-byte-key` values. The first key encrypts new records; all
+configured keys may decrypt retained records. Key removal is allowed only
+after every record encrypted with that key has expired. A same-request replay
+whose retained key is unavailable returns `idempotency_conflict` and does not
+execute the command again.
+
+### Consequences
+
+- The existing JSONB column is sufficient; no migration is needed.
+- W1-06 implements encryption, decryption, key validation, and tests for
+  tampering, rotation, and unavailable retained keys.
+- Raw Purchase tokens remain absent from database plaintext, logs, audit data,
+  errors, and read endpoints.
+- Non-sensitive replay bodies may use the same envelope format so one
+  idempotency decoder handles all successful responses.
+
+---
+
+## ADR-046: Use Gin as the canonical backend HTTP router
+
+**Status:** Accepted
+
+### Decision
+
+Use `github.com/gin-gonic/gin` as the canonical HTTP framework and router for
+the Go API. Gin is confined to the HTTP adapter and bootstrap boundary:
+
+- `gin.Engine` owns route registration, method/path matching, route groups,
+  request binding, middleware composition, and HTTP response rendering;
+- public and Operations surfaces register through separate canonical route
+  groups;
+- module HTTP adapters own their concrete endpoint declarations;
+- application, domain, repository, and persistence packages remain framework
+  neutral and receive `context.Context`, not `*gin.Context`;
+- `net/http` remains valid for `http.Server`, transport types, status
+  constants, headers, cookies, `httptest`, request contexts, and graceful
+  shutdown.
+
+The engine uses explicit middleware with `gin.New()`; it does not adopt
+`gin.Default()` or duplicate repository-owned request logging.
+
+### Consequences
+
+- ADR-043's first router bullet is superseded; its authentication and
+  persistence decisions remain unchanged.
+- The API keeps `/api/public/v1` and `/api/operations/v1` route boundaries.
+- Gin is a new API-module dependency; no database migration or OpenAPI
+  contract change is required.
+- Future endpoints must register through the appropriate route group and
+  preserve the public/Operations contract boundary.
+
+---
+
+## ADR-047: Use Next.js App Router for both web applications
+
+**Status:** Accepted
+
+### Decision
+
+Migrate `apps/storefront-web` and `apps/operations-web` in place from Vite and
+React Router to the current stable Next.js 16 App Router. The applications
+remain separate workspace packages and independently runnable deployments as
+required by ADR-002.
+
+Use a compatibility-first migration:
+
+- App Router filesystem entries own route registration while each
+  application's `src/routes/paths.ts` remains the central URL constant and
+  dynamic URL-builder registry;
+- existing interactive pages, TanStack Query hooks, forms, and session flows
+  remain Client Components and browser-side API consumers until a separate
+  decision justifies server rendering;
+- the Go API remains the sole authoritative backend; do not add Next.js Route
+  Handlers, Server Actions, middleware authorization, direct database access,
+  or duplicated business rules;
+- local Next.js rewrites preserve the same-origin `/api`, `/health`, and
+  `/ready` paths; deployed routing is owned by ingress or reverse proxy;
+- browser-visible configuration uses `NEXT_PUBLIC_*`, while the optional
+  local API proxy target is server-only;
+- Tailwind CSS 4 uses its PostCSS integration;
+- each app owns a typed manifest and a production-only service worker that may
+  cache immutable framework assets, icons, and a data-free offline fallback,
+  but never API, authentication, participant, financial, or operational data.
+
+Initial pages remain client-rendered for parity. Server Components may provide
+route and layout boundaries, but SSR/RSC data loading, SEO optimization,
+revalidation policy, and middleware guards require separate evidence and work.
+
+### Consequences
+
+- ADR-003 is superseded. React and TypeScript remain; Vite and React Router are
+  removed from both application runtimes.
+- ADR-004 is amended: `paths.ts` remains centralized, while `src/app/**`
+  filesystem routes replace `routes.tsx` registration.
+- ADR-005 is amended only in its framework integration mechanism; Tailwind CSS
+  4 remains accepted.
+- Both web applications require a supported Node.js runtime and emit separate
+  Next.js server artifacts instead of static-only frontend output.
+- Local ports remain 5173 for Storefront and 5174 for Operations so the
+  existing OIDC origin and callback contract remains stable.
+- Provider selection, cloud provisioning, frontend containers, SSR/SEO
+  optimization, and production rollout remain deferred.
+
+---
+
+## ADR-048: Use request-local Party references for guest Common Purchase
+
+**Status:** Accepted
+
+### Decision
+
+The guest Common Purchase request uses opaque, request-local `party_ref`
+labels to make role reuse explicit. A Party declaration includes a unique
+label and contact-backed display name. Purchaser is always a declaration;
+payer is either a distinct declaration or a reference to purchaser. An
+intended participant is either a reference to one declared purchaser/payer
+Party or a name-only unresolved participant.
+
+`party_ref` is not a Party UUID, customer identifier, or durable handle. It
+is valid only within one request. Each declaration label must be unique and
+every reference must resolve to exactly one declaration in that request. A
+duplicate declaration, unknown reference, or object mixing a reference with
+declaration/name fields is invalid. Equal names, emails, and phones never
+create a reference or merge identities.
+
+The server creates Party rows only from purchaser/payer declarations. A
+resolved participant writes the referenced Party UUID and its current display
+name snapshot; a name-only participant writes a null `party_id` with the
+provided display-name snapshot. The labels are part of the request payload and
+therefore part of the canonical idempotency hash.
+
+### Consequences
+
+- The Storefront OpenAPI contract uses mutually exclusive declaration,
+  reference, and name-only participant shapes with examples for shared and
+  distinct roles.
+- Existing Party and Purchase foreign keys represent the relationships; no
+  relationship table, Party search endpoint, contact matching, or migration is
+  needed.
+- A later authenticated Party-selection or merge workflow requires its own
+  contract and decision; it must not overload these guest request labels.
+
+---
+
+## ADR-049: Price Common Purchases per intended participant
+
+**Status:** Accepted
+
+### Context
+
+A Common Purchase stores one Offering, a captured
+`offering_unit_price_minor`, an intended `participant_count`, and
+`total_amount_minor`. Phase 1 has no cart, purchase-item, or independent
+quantity aggregate. Existing two-participant Purchase fixtures already record
+twice the Offering unit price, while quota uses the same participant-unit
+measure.
+
+### Decision
+
+For a Phase 1 Common Purchase, the total is the exact minor-unit product:
+
+```text
+total_amount_minor = offering_unit_price_minor × participant_count
+```
+
+The unit price, currency, capacity, count, and total are captured once at
+checkout. The multiplication uses checked integer arithmetic and rejects any
+result above the API/database exact-integer bound. A zero unit price remains
+valid and yields a zero total. Taxes, discounts, fees, donations, conversion,
+and a separate purchase quantity remain out of scope.
+
+### Consequences
+
+- `participant_count` is the commercial count as well as the quota unit for
+  this one-Offering Common Purchase.
+- The Purchase constructor validates the formula, so direct persistence and
+  future public checkout cannot bypass it.
+- No migration is required: existing immutable snapshot columns already hold
+  the inputs and result.
+- Any future Offering whose price is for a whole multi-participant package
+  needs an explicit pricing-mode requirement and additive contract/schema
+  design; it must not silently reinterpret this formula.
+
+---
+
+## ADR-050: Make guest Common Purchase creation durable and replayable
+
+**Status:** Accepted
+
+### Decision
+
+The Purchase UUID remains the canonical API identifier. A Common Purchase also
+gets a non-secret human/support reference in this exact form:
+
+```text
+QRB-<event-year>-<16 uppercase unpadded Base32 characters>
+```
+
+The suffix encodes 10 bytes from `crypto/rand` (80 bits). A database duplicate
+reference rolls back the checkout and retries with a new candidate at most five
+times; no sequential identifier or generated volume is exposed.
+
+Guest checkout has no authenticated person or durable browser identity, so its
+ADR-041 namespace is the stable literal
+`storefront.purchase.create.guest`. It identifies the Storefront surface,
+Purchase creation command, and the one global guest scope. Request IDs, IP
+addresses, headers, Purchase tokens, and Party contacts are never used as
+caller scope. The client-supplied high-entropy idempotency key represents one
+guest intent and stays only in `idempotency_records`.
+
+For Common Purchase checkout, `Command.Retention == 0` means durable replay:
+`idempotency_records.expires_at` is `NULL` and the record is not removed by
+normal expiry processing. This is required because issuing another Purchase for
+the same retry would remain unacceptable after 24 hours. A configured
+idempotency response key must remain available for every durable replay it
+encrypted; key cleanup/rotation and any controlled record-retention process
+need a separate approved operational policy.
+
+### Consequences
+
+- The encrypted response replay contains the one-time Purchase token but no
+  plaintext token, contact, or raw idempotency key is copied to domain, audit,
+  or outbox data.
+- A successful guest checkout creates Parties, Purchase/history, reservation,
+  outbox events, and the durable encrypted replay in one transaction. Failed
+  attempts, including a reference collision, leave no completed replay record.
+- Other commands retain their explicit positive replay windows. A negative
+  retention is invalid.
+- Purchase tracking, cancellation, evidence, payment, token recovery, and
+  background cleanup remain separate lifecycle work.
+
+---
+
+## ADR-051: Model one Eid Event as three or four local execution days
+
+**Status:** Accepted
+
+### Decision
+
+An executable Qurban Event declares one IANA timezone and exactly three or four
+inclusive local execution dates. An execution day owns operating windows and
+may contain sessions, shifts, station assignments, handovers, readiness gates,
+and recovery periods. UTC timestamps remain the stored instants; local dates
+and timezone are preserved as the operational calendar.
+
+Registration windows and Event lifecycle status remain separate from the
+execution calendar. Closing a shift or execution day does not silently close
+the Event or discard unfinished work.
+
+### Consequences
+
+- Event-day records and APIs carry Event and execution-day scope.
+- Validation rejects fewer than three, more than four, duplicate, unordered,
+  or timezone-invalid execution dates.
+- A later change to duration requires an explicit product decision and
+  additive schema/contract change.
+- Release evidence includes a continuous 72–96-hour soak and a complete
+  three-or-four-day rehearsal.
+
+---
+
+## ADR-052: Treat field teams, shifts, assignments, and incidents as event-scoped operations
+
+**Status:** Accepted
+
+### Decision
+
+Livestock, Allocation, Slaughter, Distribution, Management, and Support teams
+are first-class Event-scoped records. Membership, shift, station/location
+assignment, handover, readiness, and incident ownership are explicit. A
+frontend team selection never grants authority; backend permissions and the
+active Event/team/shift assignment authorize each field command.
+
+Operational incidents record severity, affected work, owner, escalation,
+resolution, and handover state. Support diagnostics expose safe correlation,
+connectivity, queue, projection-lag, and replay state without credentials or
+unnecessary participant data.
+
+### Consequences
+
+- Team, membership, shift, assignment, handover, and incident storage uses an
+  additive migration; historical migrations are not edited.
+- Privileged membership, assignment, handover, incident, and support actions
+  are audited and version/conflict protected.
+- Volunteer payroll, generic workforce management, and organization-wide HR
+  remain out of scope.
+
+---
+
+## ADR-053: Make Sohibul Qurban attendance configurable and independent of eligibility
+
+**Status:** Accepted
+
+### Decision
+
+Purchase eligibility and Sohibul Qurban activation never imply attendance or
+personal slaughter. Each Event may enable participant attendance, and each
+Sohibul Qurban uses one explicit mode when applicable:
+
+```text
+SELF
+PROXY
+NONE
+```
+
+`SELF` and `PROXY` may require check-in and queue/station coordination. `NONE`
+does not create a participant queue obligation. Changing an attendance mode
+requires authorization, reason, history, and conflict protection.
+
+### Consequences
+
+- Payment verification can activate Sohibul Qurban without an attendance
+  decision.
+- Storefront exposes only the token-scoped participant's attendance and safe
+  progress state.
+- Proxy identity, where collected, follows minimum-data and retention rules.
+
+---
+
+## ADR-054: Support explicit Sohibul entitlement and beneficiary distribution
+
+**Status:** Accepted
+
+### Decision
+
+Distribution is a Qurban operational domain, not ecommerce fulfillment. It
+supports both Sohibul Qurban entitlement and beneficiary portions. Each record
+identifies its subject and portion/entitlement, uses `PICKUP` or `DELIVERY`, and
+tracks preparation, readiness, collection/delivery, proof, exception, and
+completion.
+
+Distribution begins only after the relevant slaughter and preparation guards
+pass. Beneficiary data is Operations-only unless an explicit Purchase-token
+scope authorizes the corresponding customer view.
+
+### Consequences
+
+- Beneficiary, portion, proof, and method storage is additive to the current
+  minimal distribution schema.
+- Pickup and delivery use the same authoritative lifecycle but may have
+  different required evidence.
+- Route optimization, generalized courier management, and public beneficiary
+  lookup remain out of scope.
+
+---
+
+## ADR-055: Use online-authoritative mobile PWAs with polling, SSE, and bounded field replay
+
+**Status:** Accepted
+
+### Decision
+
+The existing responsive Next.js Storefront and Operations PWAs are the MVP
+mobile clients. The Go API and PostgreSQL remain authoritative.
+
+Operational reads use bounded polling first. High-value one-way event updates
+may use SSE with durable projection cursors, `Last-Event-ID`, reconnection, and
+missed-event recovery. WebSocket is not part of the MVP.
+
+A device-local queue may store only explicitly allowlisted, non-financial
+field milestones with bounded retention, minimum non-sensitive payload,
+idempotency keys, visible pending state, operator-confirmed replay, and conflict
+presentation. Payment, evidence, identity, authorization, Event/team
+configuration, capacity overrides, and other sensitive commands remain
+online-only.
+
+Native QR/barcode detection is an optional browser enhancement. Manual code
+entry is always available.
+
+### Consequences
+
+- Dashboard projections are rebuildable and never command truth.
+- Service workers continue to exclude API/auth responses from ordinary runtime
+  caching; the approved field queue is a separate, narrowly owned mechanism.
+- Multi-device and reconnect tests must prove duplicate-free replay and visible
+  conflict behavior.
+- A native mobile application, Redis, message broker, microservice, or
+  WebSocket requires measured need and a separate accepted decision.

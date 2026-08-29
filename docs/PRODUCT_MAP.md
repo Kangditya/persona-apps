@@ -52,8 +52,11 @@ apps/storefront-web
 ### Notes
 
 - Use `Offering Catalogue`, not only `Animal Catalogue`.
-- Offerings may later include individual animals, categories, packages, livestock shares, or program-based products.
-- Shopping cart support remains optional.
+- Phase 1 Offerings are event-scoped sellable packages, shares, or categories,
+  not physical Livestock records.
+- Phase 1 uses direct checkout with one Offering per Purchase; there is no
+  Shopping Cart or purchase-item aggregate.
+- Other Offering forms and multi-offering checkout require later requirements.
 
 ---
 
@@ -74,14 +77,18 @@ Purchasing
 ### Backend Ownership
 
 ```text
-apps/api/internal/purchasing
-apps/api/internal/saving
-apps/api/internal/giveaway
+apps/api/internal/modules/purchasing
+apps/api/internal/modules/saving
+apps/api/internal/modules/giveaway
 ```
 
 ### Core Rule
 
 All eligible channels converge into one canonical Purchase lifecycle.
+
+For Phase 1 common purchasing, checkout reserves Event and Offering quota in
+participant units for 24 hours. Submitted evidence pauses expiry; activation
+consumes quota; expiry, cancellation, or rejection releases it.
 
 ---
 
@@ -102,8 +109,8 @@ Party & Participant
 ### Backend Ownership
 
 ```text
-apps/api/internal/identity
-apps/api/internal/participant
+apps/api/internal/modules/identity
+apps/api/internal/modules/participant
 ```
 
 ### Core Rule
@@ -130,9 +137,9 @@ Payment & Funding
 ### Backend Ownership
 
 ```text
-apps/api/internal/payment
-apps/api/internal/saving
-apps/api/internal/giveaway
+apps/api/internal/modules/payment
+apps/api/internal/modules/saving
+apps/api/internal/modules/giveaway
 ```
 
 ### Notes
@@ -158,7 +165,7 @@ Livestock
 ### Backend Ownership
 
 ```text
-apps/api/internal/livestock
+apps/api/internal/modules/livestock
 ```
 
 ### Core Lifecycle
@@ -192,7 +199,7 @@ Allocation
 ### Backend Ownership
 
 ```text
-apps/api/internal/allocation
+apps/api/internal/modules/allocation
 ```
 
 ### Core Rule
@@ -220,8 +227,8 @@ Event Operations
 ### Backend Ownership
 
 ```text
-apps/api/internal/event
-apps/api/internal/slaughter
+apps/api/internal/modules/event
+apps/api/internal/modules/slaughter
 ```
 
 ### Application Ownership
@@ -233,6 +240,17 @@ apps/operations-web
 ### Notes
 
 The real-time dashboard is a read model over Event Operations and related domains.
+
+The Full Event-Day MVP treats the following as one vertical operational chain:
+
+```text
+3–4 Local Execution Days
+→ Field Teams, Shifts, Stations, and Readiness
+→ Livestock and Participant Check-In
+→ Slaughter Queue and Milestones
+→ Distribution
+→ Customer Status and Completion Evidence
+```
 
 ---
 
@@ -253,18 +271,15 @@ Distribution
 ### Backend Ownership
 
 ```text
-apps/api/internal/distribution
+apps/api/internal/modules/distribution
 ```
 
 ### Open Scope
 
-The product must still confirm whether distribution covers:
-
-- Sohibul Qurban entitlement;
-- beneficiaries;
-- pickup;
-- delivery;
-- or a combination.
+The Full Event-Day MVP covers both explicit Sohibul Qurban entitlement and
+beneficiary distribution, with pickup or delivery, proof, exceptions, and
+completion. Route optimization and generalized ecommerce delivery remain out
+of scope.
 
 ---
 
@@ -285,7 +300,7 @@ Identity & Access
 ### Ownership
 
 ```text
-apps/api/internal/identity
+apps/api/internal/modules/identity
 apps/api/internal/platform/auth
 ```
 
@@ -320,8 +335,8 @@ apps/operations-web
 ### Backend Ownership
 
 ```text
-apps/api/internal/reporting
-apps/api/internal/* application queries
+apps/api/internal/modules/reporting
+apps/api/internal/modules/* application queries
 ```
 
 Administration is a user interface capability over authoritative domains. It must not become a single unrestricted `admin` domain.
@@ -364,7 +379,7 @@ apps/operations-web
 ### Go API
 
 ```text
-apps/api/internal/
+apps/api/internal/modules/
 ├── event/
 ├── identity/
 ├── offering/
@@ -384,6 +399,10 @@ apps/api/internal/
 ---
 
 ## 13. Delivery Roadmap
+
+The approved implementation sequence is maintained in
+`MVP-DELIVERY-ROADMAP.md`. Its 16-week boundary keeps Alternative Purchasing
+deferred while completing the full `COMMON` commerce-to-event-day journey.
 
 ### Phase 1 — Commerce Foundation
 
@@ -466,22 +485,36 @@ The slice is complete only when it includes:
 
 ## 15. Open Requirements
 
-1. **Offering model**  
-   Confirm whether offerings represent individual animals, categories, packages, cattle shares, or a combination.
+### Resolved for Phase 1
 
-2. **Checkout model**  
-   Confirm whether a purchaser may buy multiple offerings in one checkout.
+- **Offering model:** event-scoped sellable packages, shares, or categories,
+  separate from physical Livestock.
+- **Checkout model:** direct checkout with exactly one Offering per Purchase and
+  no Shopping Cart.
 
-3. **Saving price policy**  
+### Resolved for the Full Event-Day MVP
+
+- **Execution calendar:** exactly three or four inclusive local execution days
+  in an Event IANA timezone.
+- **Field organization:** event-scoped teams, members, shifts, stations,
+  handovers, incidents, and support escalation.
+- **Personal slaughter:** Event/participant-configurable self, proxy, or no
+  attendance; never inferred from financial eligibility.
+- **Distribution:** explicit Sohibul entitlement and beneficiary records,
+  pickup or delivery, proof, exceptions, and completion.
+- **Realtime:** polling first, then SSE for one-way value; no WebSocket without
+  a proven bidirectional need.
+- **Mobile/degraded mode:** responsive PWAs plus allowlisted, idempotent,
+  non-financial offline field milestones; sensitive commands stay online-only.
+
+### Still Open
+
+1. **Saving price policy**
    Confirm whether a saving plan locks price and offering at creation.
 
-4. **Giveaway selection**  
+2. **Giveaway selection**
    Confirm whether the recipient is selected by sponsor, committee, manual approval, or random draw.
 
-5. **Personal slaughter flow**  
-   Confirm whether each Sohibul Qurban performs the slaughter personally and therefore requires attendance and queue scheduling.
-
-6. **Distribution scope**  
-   Confirm whether distribution covers beneficiary delivery, Sohibul Qurban entitlement, or both.
-
-These questions must be resolved before detailed design of their affected capability.
+These remaining questions affect only Saving and Giveaway. The Event-Day MVP
+requirements above are accepted baselines and must be revalidated, not
+reinvented, when each task becomes active.

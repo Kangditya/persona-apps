@@ -4,22 +4,35 @@ Initial monorepo bootstrap for a Qurban Commerce and Operations Platform.
 
 ## Current status
 
-This repository contains React application shells, shared workspace tooling, a Go modular-monolith API shell, PostgreSQL infrastructure, placeholder OpenAPI contracts, and canonical product and architecture documentation.
+This repository contains two Next.js React applications, shared workspace
+tooling, a Go modular-monolith API, PostgreSQL infrastructure, separate OpenAPI
+contracts, and canonical product and architecture documentation.
 
-No qurban business functionality is implemented yet. The following remain deferred:
+Both web applications use Next.js 16 App Router with TanStack Query for remote
+API/server state. They keep separate public and Operations API boundaries. The
+Go API serves guest Event/Offering discovery, authenticated Operations
+Event/Offering commands, Party persistence, authorized Purchase reads, and
+atomic guest `COMMON` Purchase creation with captured snapshots, quota
+reservation, reference/token safety, outbox effects, and durable encrypted
+idempotency replay.
 
-- Qurban Event and Offering Catalogue;
-- Common, Saving, and Giveaway Purchasing;
-- Payment Verification and Funding;
-- Party, Participant, and Sohibul Qurban activation;
+Event/Offering configuration, PostgreSQL persistence, guest catalogue
+discovery, and the Week 3 Common Purchase backend are implemented. The
+following remain unimplemented:
+
+- Storefront checkout and Operations Purchase screens;
+- Payment submission, Verification, and Sohibul Qurban activation;
 - Livestock and Allocation;
 - Slaughter and Distribution operations;
-- authentication and authorization;
+- field teams, shifts, readiness, check-in, incidents, and support escalation;
+- customer event-day status, notifications, and completion documents;
+- realtime projections, polling/SSE, and bounded degraded-connectivity field
+  replay;
 - reporting projections and operational dashboards;
 - payment gateway integration;
 - production deployment.
 
-The first planned business vertical slice is:
+The approved Full Event-Day MVP sequence is:
 
 ```text
 Qurban Event
@@ -27,14 +40,24 @@ Qurban Event
 → Common Purchase
 → Payment Verification
 → Sohibul Qurban Activation
-→ Basic Operations Dashboard
+→ Livestock and Pen Assignment
+→ Allocation
+→ Slaughter Execution
+→ Distribution
+→ Customer Event-Day Status
+→ Realtime Multi-Team Mobile Operations
 ```
+
+The approved planning baseline is
+[`MVP-DELIVERY-ROADMAP.md`](MVP-DELIVERY-ROADMAP.md). The old two-month plan is
+superseded because it deferred the event-day capabilities required to operate
+Eid al-Adha for 3–4 days.
 
 ## Applications
 
 - `apps/storefront-web`: public event, offering, purchasing, payment interaction, and purchase-tracking shell;
 - `apps/operations-web`: internal event, purchasing, payment verification, participant, livestock, allocation, and distribution operations shell;
-- `apps/api`: Go modular-monolith API shell.
+- `apps/api`: Go modular-monolith API with public Event/Offering discovery.
 
 ## Requirements
 
@@ -131,7 +154,7 @@ pnpm dev
 
 URL: `http://127.0.0.1:5173`
 
-Vite provides lightweight static serving and browser live reload through HMR.
+Next.js provides the App Router development server and browser live reload.
 
 ### Operations Web
 
@@ -150,7 +173,7 @@ pnpm dev
 
 URL: `http://127.0.0.1:5174`
 
-Vite provides lightweight static serving and browser live reload through HMR.
+Next.js provides the App Router development server and browser live reload.
 
 ### Go API
 
@@ -177,14 +200,119 @@ HTTP_PORT=18080 make dev-api
 
 The selected API address should be used by any local frontend API configuration that needs to call the server.
 
+### Swagger UI
+
+With the Go API running, open `http://127.0.0.1:8080/swagger` (or the port
+selected by `make dev-api`). The page offers the separate Storefront and
+Operations contracts and loads both YAML files from the same API origin. Its
+“Try it out” requests use the local API even though the contracts retain their
+deployment placeholder server URL.
+
+The API locates the contracts from the repository root, the API working
+directory, or `OPENAPI_DIR` when the binary is launched from another location.
+The page loads the official Swagger UI browser assets from the pinned major
+version on unpkg; an air-gapped deployment should vendor those assets as a
+separate deployment task.
+
+## Shared UI and PWA foundation
+
+Both applications consume the domain-agnostic `@persona-apps/ui` workspace
+package. It owns Tailwind v4 semantic tokens and editable shadcn-style atoms,
+molecules, and patterns. Native HTML owns simple controls; React Aria
+Components owns the composite dialog, menu, and sheet behavior. The package has
+no routes, API access, authentication, environment reads, or qurban rules.
+
+Each application also has an independent production PWA configuration:
+
+| App        | Manifest identity                     | Scope                        | Offline policy       |
+| ---------- | ------------------------------------- | ---------------------------- | -------------------- |
+| Storefront | Qurban Storefront (`/storefront-web`) | `/` on the storefront origin | immutable shell only |
+| Operations | Qurban Operations (`/operations-web`) | `/` on the operations origin | immutable shell only |
+
+Each manifest declares the app-owned `icon-192.svg` and `icon-512.svg` assets;
+the 512px icon is marked `maskable` and has safe centered artwork. The service
+workers precache immutable Next.js JavaScript/CSS/font assets, the icons, and a
+data-free offline fallback. Successful HTML and API responses are not cached.
+API requests, authentication, participant, financial, operational, and
+mutation data have no cache or replay path. Offline mode shows an unavailable
+notice; it never presents cached records as authoritative. Updates use a
+visible prompt and do not activate or reload automatically during work.
+
+Service workers are disabled during development. Production builds emit each
+app's manifest, icon, and worker. Keep the applications on separate origins or
+configure a distinct deployment base path before hosting them on one origin.
+
+## Frontend API configuration
+
+Browser-visible values use Next.js public variables; the proxy target remains
+server-only:
+
+```text
+NEXT_PUBLIC_API_BASE_URL=
+API_PROXY_TARGET=http://127.0.0.1:8081
+NEXT_PUBLIC_API_PROVIDER=api
+```
+
+For local development, Next.js rewrites canonical `/api` paths unchanged and
+also rewrites `/health` and `/ready` to `API_PROXY_TARGET`. Deployed same-origin
+routing belongs to ingress or a reverse proxy, so omit that value when the
+Next.js runtime should not proxy locally. Set
+`NEXT_PUBLIC_API_PROVIDER=development` to use a deterministic,
+non-authoritative health diagnostic without a running API. It returns only
+`{ "status": "development" }`; it does not represent qurban product data.
+
+The Storefront and Operations endpoint modules remain application-owned.
+They share only `@persona-apps/api-client`, which owns request serialization,
+timeouts, cancellation, response parsing, and normalized errors. Operations
+keeps its HttpOnly session browser-managed and its rotated CSRF value in
+TanStack Query memory. No credentials are stored or logged by the generic
+client.
+
+Future public endpoints belong in `apps/storefront-web/src/api`; operations
+endpoints belong in `apps/operations-web/src/api`, using their respective
+OpenAPI contract. Add a TanStack Query key beside each endpoint and invalidate
+only affected keys after a successful, contracted mutation.
+
 Health checks:
 
 ```bash
-curl http://127.0.0.1:8080/health
-curl http://127.0.0.1:8080/ready
+curl http://127.0.0.1:8081/health
+curl http://127.0.0.1:8081/ready
 ```
 
 `/ready` requires PostgreSQL to be running.
+
+## Planned API response envelope
+
+The current `/api/public/v1` and `/api/operations/v1` payloads remain unchanged.
+The proposed envelope is a future versioned contract change, not a behavior of
+the current API:
+
+```json
+{
+  "success": true,
+  "data": { "actual": "response DTO" },
+  "error": null,
+  "metadata": {
+    "timestamp": "2026-08-29T12:34:56Z",
+    "request_id": "req_..."
+  }
+}
+```
+
+The recommended migration keeps `data` and `error` present with `null` in the
+non-applicable branch, uses an RFC 3339 UTC timestamp, and mirrors the
+`X-Request-ID` value in `metadata.request_id`. List endpoints should define an
+endpoint DTO such as `{ "items": [], "page": {} }` inside `data` rather than
+creating an ambiguous `data.data` shape. Errors keep a safe public code,
+message, and details object; internal causes stay in structured logs.
+
+Before implementation, accept an ADR that introduces a v2 route or equivalent
+explicit compatibility boundary. Then centralize success/error writers, update
+both OpenAPI contracts and the frontend API parser, and handle idempotency
+replays so a replay keeps the original result but receives the current request
+ID and timestamp. Redirects, `204 No Content`, and health/readiness probes stay
+protocol-specific exceptions unless a later decision says otherwise.
 
 ## Run the complete local stack
 
@@ -198,9 +326,27 @@ This starts three independent development processes:
 
 - Storefront Web on `127.0.0.1:5173`;
 - Operations Web on `127.0.0.1:5174`;
-- Go API with Air live reload on `127.0.0.1:8080`.
+- Go API with Air live reload on the `.env` HTTP address (`127.0.0.1:8081` in
+  the example).
 
 Use `Ctrl+C` to stop the development processes.
+
+## Production-mode web runtime
+
+Each web application builds and starts independently:
+
+```bash
+pnpm --filter @persona-apps/storefront-web build
+pnpm --filter @persona-apps/storefront-web start
+
+pnpm --filter @persona-apps/operations-web build
+pnpm --filter @persona-apps/operations-web start
+```
+
+The commands listen on ports 5173 and 5174 respectively. Production hosting
+must provide a supported Node.js runtime and same-origin ingress routing for
+`/api`, `/health`, and `/ready`; this repository does not provision a provider
+or frontend container.
 
 ## Validation
 
@@ -215,4 +361,12 @@ Canonical product and architecture documents are under `docs/`:
 - `docs/PRD.md`;
 - `docs/PRODUCT_MAP.md`;
 - `docs/ARCHITECTURE.md`;
-- `docs/DECISIONS.md`.
+- `docs/DECISIONS.md`;
+- `docs/CONVENTIONS.md`.
+
+Delivery and execution planning:
+
+- `MVP-DELIVERY-ROADMAP.md`;
+- `.codex/CURRENT_STATE.md`;
+- `.codex/plans/` for inactive header-only task drafts;
+- `.codex/TASK.md` for exactly one active reviewed task when present.

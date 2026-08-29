@@ -10,6 +10,18 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: persona_apps
+          POSTGRES_USER: persona_apps
+          POSTGRES_PASSWORD: persona_apps
+        options: >-
+          --health-cmd "pg_isready -U persona_apps -d persona_apps"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -36,7 +48,7 @@ jobs:
 
       - name: Verify Go formatting
         working-directory: apps/api
-        run: test -z "$(gofmt -l .)"
+        run: go run ./cmd/format -check
       - name: Vet Go API
         working-directory: apps/api
         run: go vet ./...
@@ -47,5 +59,23 @@ jobs:
         working-directory: apps/api
         run: go build ./...
 
+      - name: Verify PostgreSQL migration and seed lifecycle
+        working-directory: apps/api
+        env:
+          APP_ENV: test
+          DATABASE_URL: postgres://persona_apps:persona_apps@localhost:5432/persona_apps?sslmode=disable
+          TEST_DATABASE_URL: postgres://persona_apps:persona_apps@localhost:5432/persona_apps?sslmode=disable
+        run: |
+          go run ./cmd/db migrate validate
+          go run ./cmd/db migrate up
+          go run ./cmd/db migrate version
+          go run ./cmd/db migrate status
+          go run ./cmd/db seed run --group reference
+          go run ./cmd/db seed run --group reference
+          go test ./...
+          go run ./cmd/db migrate down --steps 1
+          go run ./cmd/db migrate up --steps 1
+          go run ./cmd/db migrate version
+
       - run: docker compose -f infrastructure/compose.yaml config
-      - run: docker build -f apps/api/Dockerfile apps/api
+      - run: docker build -f apps/api/Dockerfile .

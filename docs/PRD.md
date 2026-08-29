@@ -232,7 +232,7 @@ Allow a purchaser to select an available qurban offering, submit participant det
 
 - offering catalogue;
 - price and availability display;
-- cart or direct checkout;
+- direct checkout;
 - participant entry;
 - payment instruction;
 - payment status;
@@ -240,6 +240,32 @@ Allow a purchaser to select an available qurban offering, submit participant det
 - receipt or proof;
 - cancellation and expiry rules;
 - operator-assisted purchase.
+
+### Phase 1 Common-Purchase Rules
+
+- The Storefront exposes only the active event. Event lifecycle is
+  `DRAFT -> PUBLISHED -> ACTIVE <-> SUSPENDED -> CLOSED -> ARCHIVED`, with at
+  most one active event.
+- An MVP Offering is an event-scoped sellable package, share, or category, not
+  a physical Livestock record.
+- One Purchase selects exactly one Offering. Phase 1 has no Shopping Cart or
+  purchase-item aggregate.
+- Checkout snapshots the Offering, price, currency, participant capacity, and
+  intended participant names.
+- Quota uses participant units against both Event and Offering limits. Checkout
+  atomically reserves units for 24 hours.
+- Submitted payment evidence pauses reservation expiry until review.
+  Activation consumes quota; expiry, cancellation, or rejection releases it.
+  Evidence resubmission after release must reacquire quota atomically.
+- Common-purchase payment evidence is an append-oriented object-storage
+  reference. JPEG, PNG, and PDF are accepted up to 10 MiB; PostgreSQL stores
+  metadata and SHA-256, not file bytes.
+- Evidence must declare the exact outstanding amount. Underpayment and
+  overpayment submissions are rejected; balance policy remains deferred.
+- Authorized Finance or Operations Managers verify or reject evidence.
+  Successful verification atomically marks Payment verified, records Purchase
+  `PAID` then `ELIGIBLE`, consumes quota, activates each Sohibul Qurban once,
+  and writes audit and outbox effects.
 
 ---
 
@@ -515,20 +541,27 @@ Dashboard metrics must be derived from authoritative transactional records, not 
 
 Each aggregate owns its own lifecycle. Avoid one global status enum.
 
-Illustrative status groups:
+Phase 1 status groups:
 
 | Aggregate            | Example Statuses                                                             |
 | -------------------- | ---------------------------------------------------------------------------- |
-| Event                | Draft, Published, Active, Closed, Archived                                   |
+| Event                | Draft, Published, Active, Suspended, Closed, Archived                        |
+| Offering             | Draft, Published, Unavailable, Archived                                      |
+| Quota Reservation    | Reserved, Consumed, Released, Expired                                        |
 | Purchase             | Draft, Pending Payment, Paid, Eligible, Allocated, Completed, Cancelled      |
 | Payment              | Pending, Submitted, Verified, Rejected, Refunded                             |
+| Sohibul Qurban       | Pending, Active, Replaced, Cancelled                                         |
 | Saving Account       | Draft, Active, Partially Funded, Fully Funded, Converted, Cancelled, Expired |
 | Giveaway Application | Submitted, Under Review, Approved, Rejected, Assigned                        |
 | Livestock            | Registered, Inspected, Ready, Allocated, Queued, Slaughtered, Held           |
 | Allocation           | Provisional, Confirmed, Released, Reassigned                                 |
 | Distribution         | Pending, Prepared, Ready, Collected, Delivered, Failed                       |
 
-Final status names and transitions must be validated during domain modeling.
+The Phase 1 transition grammar, command guards, error behavior, audit/outbox
+effects, and replay rules are defined in the Commerce Lifecycles specification.
+The Phase 1 Operations permission matrix is defined in the Permissions
+specification. Saving, Giveaway, allocation, distribution, refund, and
+provider-specific transitions remain deferred.
 
 ---
 
@@ -738,22 +771,28 @@ The initial product is successful when:
 
 The following decisions remain intentionally open:
 
-- exact participant quota rules per offering;
-- whether quota is reserved before or after payment;
 - whether saving targets lock price;
 - saving cancellation and transfer policy;
 - giveaway eligibility and selection workflow;
 - livestock procurement ownership;
 - cattle share and other package allocation rules;
-- participant attendance requirements;
-- event-day offline or low-connectivity mode;
-- distribution entitlement model;
 - certificate generation;
 - payment gateway selection;
 - notification channels;
 - data retention periods;
 - organization and multi-tenant requirements;
 - public self-service identity model.
+
+Phase 1 common purchasing has resolved Offering shape, direct checkout, quota
+reservation, payment evidence, and participant activation through ADR-042.
+Those decisions do not define later Saving, Giveaway, refund, payment-gateway,
+or livestock-allocation policy.
+
+The Full Event-Day MVP resolves execution duration/timezone, field teams,
+attendance modes, distribution scope, polling/SSE transport, mobile web, and
+bounded degraded-connectivity behavior in Section 24 and ADR-051 through
+ADR-055. Minimal completion evidence and certificates are included; advanced
+document generation remains open.
 
 These decisions should be captured through updates to this PRD or Architecture Decision Records.
 
@@ -832,7 +871,8 @@ Purchasing
 └── Purchase History
 ```
 
-Shopping cart functionality is optional. It should only be implemented when the confirmed user journey allows multiple offerings in one checkout.
+Phase 1 uses direct checkout with exactly one Offering per Purchase. Shopping
+Cart and multi-offering checkout require a later requirement and decision.
 
 ### 21.3 Party & Participant
 
@@ -930,7 +970,10 @@ Distribution
 └── Distribution Completion
 ```
 
-Final distribution rules remain subject to operational discovery.
+The Full Event-Day MVP supports both Sohibul Qurban entitlement and beneficiary
+distribution. Each distribution record declares its subject, portion or
+entitlement, method (`PICKUP` or `DELIVERY`), proof requirements, exceptions,
+and completion status. Route optimization remains out of scope.
 
 ### 21.9 Identity & Access
 
@@ -969,6 +1012,11 @@ Administration & Reporting
 ---
 
 ## 22. Revised Delivery Phases
+
+The Full Event-Day MVP includes Commerce Foundation, Livestock and Allocation,
+Event-Day Operations, and Distribution and Reporting. Alternative Purchasing
+remains a later expansion; it is not a release prerequisite for the `COMMON`
+journey.
 
 ### Phase 1 — Commerce Foundation
 
@@ -1016,13 +1064,102 @@ Administration & Reporting
 
 ## 23. Capability-Level Open Questions
 
-The following requirements remain unresolved and must be verified before detailed implementation:
+### Resolved for Phase 1
 
-1. Whether offerings represent individual animals, packages, cattle shares, categories, or a combination.
-2. Whether one checkout may contain multiple offerings.
-3. Whether saving plans lock the offering and price at creation.
-4. Whether giveaway recipients are selected by sponsor, committee, manual approval, or random draw.
-5. Whether each Sohibul Qurban performs the slaughter personally and therefore requires individual attendance and queue scheduling.
-6. Whether distribution includes beneficiary delivery, Sohibul Qurban entitlement, or both.
+- Offerings are event-scoped sellable packages, shares, or categories and
+  remain separate from physical Livestock.
+- One direct checkout selects exactly one Offering; there is no Shopping Cart
+  or purchase-item aggregate.
 
-These decisions should update the PRD, Product Map, and relevant ADRs before their affected phase enters BUILD.
+### Resolved for the Full Event-Day MVP
+
+- An Event declares an IANA timezone and exactly three or four inclusive local
+  execution days. Each day may contain sessions, team shifts, station
+  assignments, handovers, and recovery periods.
+- Sohibul Qurban attendance is configurable per Event and participant. The
+  supported modes are self-attendance, proxy attendance, or no attendance;
+  attendance never determines Purchase payment eligibility.
+- Distribution supports explicit Sohibul Qurban entitlements and beneficiary
+  records, using pickup or delivery with traceable proof and completion.
+- The responsive Storefront and Operations PWAs are the mobile baseline.
+  Authoritative commands remain server-validated; only an explicit allowlist of
+  non-financial field milestones may queue during degraded connectivity.
+- Operations uses bounded polling first and Server-Sent Events for high-value
+  one-way updates. WebSocket remains deferred until a bidirectional requirement
+  is proven.
+
+### Still Open
+
+The following requirements remain unresolved and must be verified before their
+affected implementation:
+
+1. Whether saving plans lock the offering and price at creation.
+2. Whether giveaway recipients are selected by sponsor, committee, manual approval, or random draw.
+   The remaining questions apply only to Saving and Giveaway. Event-day execution,
+   attendance, distribution, realtime transport, and degraded-connectivity
+   baselines are fixed above and in ADR-051 through ADR-055.
+
+---
+
+## 24. Full Event-Day MVP Requirement Baseline
+
+### 24.1 Multi-Day Event Execution
+
+- Every executable Event has exactly three or four inclusive local execution
+  days in an explicit IANA timezone.
+- Operators configure operating windows, sessions, team shifts, station
+  assignments, handovers, readiness gates, and recovery periods per day.
+- The platform must remain authoritative and auditable across day boundaries;
+  closing a shift or day must not erase unfinished work.
+
+### 24.2 Field Teams and Technical Support
+
+- Livestock, Allocation, Slaughter, Distribution, Management, and Support teams
+  are event-scoped operational records with authorized memberships.
+- Team members receive explicit shift and station assignments; no frontend-only
+  team selection grants authority.
+- Incidents record severity, owner, affected work, escalation, resolution, and
+  handover status.
+- Support operators can inspect safe request, connectivity, projection-lag, and
+  queued-command diagnostics without receiving credentials or unnecessary
+  participant data.
+
+### 24.3 Livestock-to-Distribution Traceability
+
+- Every livestock unit is traceable through intake, inspection, readiness,
+  pen/location history, allocation, slaughter queue/execution, and completion.
+- Every active Sohibul Qurban is traceable from eligible Purchase to Allocation,
+  applicable attendance/proxy status, slaughter result, and distribution
+  entitlement or beneficiary outcome.
+- Capacity, reassignment, contested queue transitions, and distribution
+  completion remain transactionally safe, versioned, and auditable.
+
+### 24.4 Customer Event-Day Journey
+
+- A Purchase-token-scoped Storefront view exposes schedule/instructions,
+  attendance when applicable, privacy-safe queue/slaughter milestones,
+  distribution status, notifications, and final evidence/documents.
+- Storefront never exposes team membership, internal notes, beneficiary data
+  outside the token scope, exact internal queue topology, or privileged fields.
+
+### 24.5 Realtime, Mobile, and Degraded Connectivity
+
+- The operational freshness target remains generally under ten seconds.
+- Dashboards derive from rebuildable projections and display freshness, lag,
+  errors, and reconnection state.
+- Polling is the baseline; SSE adds one-way updates with reconnect and missed
+  event recovery. Commands continue through ordinary authenticated HTTP APIs.
+- Critical field screens support representative mobile browsers and manual code
+  entry when native QR/barcode detection is unavailable.
+- A device-local queue may contain only approved non-financial field milestones
+  with bounded retention, idempotency keys, visible pending state, replay, and
+  conflict handling. Payment, configuration, authorization, identity, and
+  sensitive evidence mutations remain online-only.
+
+### 24.6 Release Gate
+
+The Full Event-Day MVP is not releasable from commerce-only evidence. Release
+requires the complete criteria in `MVP-DELIVERY-ROADMAP.md`, including
+multi-team execution, mobile/degraded-connectivity verification, backup and
+projection recovery, a 72–96-hour soak, role-complete UAT, a 3–4-day rehearsal,
+runbooks, and a controlled pilot with recorded go/no-go evidence.

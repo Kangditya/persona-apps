@@ -5,6 +5,7 @@
 
 # JavaScript
 node_modules/
+.next/
 dist/
 coverage/
 .turbo/
@@ -24,4 +25,8 @@ apps/api/coverage.out
 
 # Local infrastructure
 postgres-data/
-tmp/
+tmp
+
+# AI Secrets-Local
+graphify-out
+.cortexkit
