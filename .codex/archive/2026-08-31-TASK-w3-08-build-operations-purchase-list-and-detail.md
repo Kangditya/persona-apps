@@ -1,12 +1,14 @@
 # Task: W3-08 Build Operations Purchase List and Detail
 
+## Executed
+
 ## Status
 
-Executed and verified on 2026-08-31 after explicit plan approval and BUILD
-authorization. The live tracker status is `Done`; the preserved execution
-record is archived at
-`.codex/archive/2026-08-31-TASK-w3-08-build-operations-purchase-list-and-detail.md`.
-Do not commit or push unless requested.
+Implemented and verified as of 2026-08-31. The user explicitly requested
+execution of W3-08 and required the implementation to apply the live Penpot
+design. Tracker W3-08 is being moved from `In Progress` to `Done`; W3-09 is
+being promoted to `Ready` because both frontend dependencies are complete. No
+commit or push was requested.
 
 ## Tracker
 
@@ -402,6 +404,81 @@ mock-only data does not satisfy the acceptance criteria.
   plane in W6-03; all Purchase mutations and Payment behavior remain Week 4+.
 - Deferred: polling/dashboard projections. This screen reads authoritative
   queries on demand and does not imply realtime freshness.
+
+## Execution Report
+
+### Implemented
+
+- Modified `apps/operations-web/src/routes/paths.ts` and its test with the
+  centralized `/purchasing/[purchaseId]` builder and active-path coverage.
+- Added the thin App Router entry
+  `apps/operations-web/src/app/purchasing/[purchaseId]/page.tsx`.
+- Added `apps/operations-web/src/api/purchases.ts` and focused tests for exact
+  cookie-authenticated GET paths, contracted Event/status/cursor/limit query
+  encoding, cancellation, strict list/detail envelopes, optional payer/contact
+  fields, participant sequencing/count consistency, safe integers, timestamps,
+  UUIDs, and rejection of token/extra-field leakage.
+- Added `apps/operations-web/src/features/purchases/queries.ts` with private
+  list/detail keys under `operations/private/purchases`, a fixed bounded limit
+  of 10, opaque cursor isolation, forwarded abort signals, and no retries.
+- Replaced `PurchasingPage.tsx` with the `purchase.read`-gated list, exact Event
+  UUID/status filters, cursor history, explicit request states, Penpot-aligned
+  filter/results/status hierarchy, wide semantic table, and narrow cards.
+- Added `PurchaseDetailPage.tsx` with canonical UUID gating, distinct not-found
+  handling, captured commercial facts, explicit purchaser/optional payer,
+  ordered intended-participant snapshots, and lifecycle timestamps.
+- Corrected the Operations shared-UI Tailwind source path in `global.css`.
+  No API, OpenAPI, Go, database, migration, dependency, lockfile, or generated
+  client changed.
+
+### Verified
+
+- Operations focused verification passed: 9 Vitest files / 21 tests,
+  TypeScript, Oxlint, production build, and generated dynamic detail route.
+- `make lint typecheck test build compose-check` passed across the repository.
+  `git diff --check` and Prettier passed.
+- A separately migrated fresh PostgreSQL database passed
+  `TEST_DATABASE_URL=... go test ./...`. An earlier run against the browser
+  fixture database was correctly discarded because its intentional active
+  Event violated tests that create their own sole active Event.
+- Real browser evidence against local OIDC, Go API, and PostgreSQL covered
+  signed-out, forbidden, permitted, valid/invalid filters, empty results,
+  opaque cursor previous/next boundaries, direct detail, invalid UUID,
+  not-found, purchaser/payer/name-only participant snapshots, and logout
+  followed by a protected direct return.
+- Desktop list/detail screenshots were compared with live Penpot page 24. The
+  approved header/filter/table/status hierarchy is present; uncontracted KPI
+  cards, primary mutation, dashboard totals, and lower workflow panel are
+  absent.
+- At 360px the table is hidden in favor of equivalent cards; list and detail
+  both measured `scrollWidth == clientWidth`. Browser verification also proved
+  one H1, explicit labels, semantic links/buttons, heading focus after direct
+  navigation, readable card contrast, and an empty/error announcement.
+- API logs showed bounded list requests and explicit detail requests only; the
+  list performed no per-row detail/participant fetch. Console warnings/errors
+  were empty.
+
+### Assumed
+
+- The local OIDC issuer intentionally lacks `purchase.read`; browser fixtures
+  temporarily granted it only to disposable server sessions after first
+  proving the forbidden state. Production permission provisioning remains
+  deployment-owned.
+- Browser time formatting is display-only. API UTC instants, status, captured
+  amount/currency, participant count, and snapshots remain authoritative.
+
+### Deferred / Risks
+
+- `make validate` still stops at the same 18 pre-existing Go formatter drifts;
+  W3-08 changes no Go file and did not normalize unrelated sources.
+- Free-text/reference/contact/participant search, total counts, KPI cards,
+  mutations, exception actions, and the broader commerce control plane remain
+  W6-03 or later.
+- Payment verification, cancellation, tracking, polling/projections, audit UI,
+  and privileged corrections remain outside W3-08.
+- The browser surface did not expose a measurable text-zoom override. Narrow
+  reflow, wrapping, semantic structure, and focus were verified directly; full
+  WCAG/device zoom coverage remains a later cross-browser gate.
 
 ## Final Report Requirements
 

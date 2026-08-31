@@ -1,6 +1,6 @@
 @import "@persona-apps/ui/styles/tokens.css";
 @import "tailwindcss";
-@source "../../../packages/ui/src";
+@source "../../../../packages/ui/src";
 
 @layer base {
   body {

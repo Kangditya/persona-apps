@@ -2,11 +2,11 @@
 
 ## Status
 
-Penpot-reconciled draft prepared on 2026-08-26. The live tracker status remains
-`Backlog` because W3-08 is still an execution dependency; W3-07 is implemented
-and verified. This inactive plan may be reviewed now, but it must not be
-activated or copied to `.codex/TASK.md` until both frontend tasks are
-implemented and verified. Do not commit or push unless requested.
+Penpot-reconciled draft prepared on 2026-08-26 and ready for review. The live
+tracker status is `Ready` because W3-07 and W3-08 are implemented and verified.
+This remains an inactive plan: do not begin BUILD until it is explicitly
+approved and copied to a new `.codex/TASK.md`. Do not commit or push unless
+requested.
 
 ## Tracker
 

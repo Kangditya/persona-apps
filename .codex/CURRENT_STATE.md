@@ -27,7 +27,8 @@ version/bounds migration, public catalogue routes, and permission-gated
 Operations command/query routes are implemented. Operations Event/Offering and
 Storefront public catalogue screens are implemented. Storefront direct
 checkout and its inline safe Purchase confirmation are now implemented over the
-public Purchase command; Operations Purchase list/detail remains pending.
+public Purchase command. Operations Purchase list/detail is implemented over
+the permission-gated Operations reads.
 
 The product direction has changed from a generic single-brand commerce and POS platform into a:
 
@@ -118,7 +119,7 @@ The applications now include a TanStack Query provider, typed API transport
 boundaries, and a non-authoritative API-availability diagnostic. Storefront and
 Operations use separate route registries and API surfaces. Operations has
 authenticated Event/Offering list, create, detail, edit, lifecycle, conflict,
-and logout flows against the W2-05 API. Storefront has active-Event landing,
+logout, and read-only Purchase list/detail flows. Storefront has active-Event landing,
 published-Offering list/detail, safe public states, exact minor-unit price, and
 advisory availability flows against the W2-04 API.
 
@@ -139,26 +140,24 @@ Current placeholder routes:
 #### Operations Web
 
 ```text
-/operator-login
 /event-dashboard
-/purchasing
 /payment-verification
 ```
 
 #### Storefront Web
 
 ```text
-/offerings/[offeringId]/checkout
 /purchase-tracking
 ```
 
-`/operator-login` now owns the real OIDC session/sign-in/logout state. The
-remaining Operations routes and Storefront `/purchase-tracking` route in these
-lists are capability-aligned placeholders. Storefront checkout is implemented
-under the Offering detail route and creates one public `COMMON` Purchase;
-payment, tracking, and token recovery remain deferred. Event/Offering administration is
-implemented under Operations `/events`; public discovery is implemented under
-Storefront `/` and `/offerings`.
+`/operator-login` owns the real OIDC session/sign-in/logout state. Operations
+Purchase list/detail is implemented under `/purchasing` and
+`/purchasing/[purchaseId]`; Storefront checkout is implemented under the
+Offering detail route and creates one public `COMMON` Purchase. The routes
+still listed above are capability-aligned placeholders. Payment, tracking, and
+token recovery remain deferred. Event/Offering administration is implemented
+under Operations `/events`; public discovery is implemented under Storefront
+`/` and `/offerings`.
 
 ### Backend
 
@@ -369,7 +368,6 @@ and atomic public checkout with durable encrypted replay.
 
 - Saving Purchasing;
 - Giveaway Purchasing;
-- Operations Purchase list/detail;
 - purchase cancellation;
 - payment and later Purchase lifecycle transitions.
 
@@ -527,7 +525,7 @@ Current replacements:
 
 ## Current Verification State
 
-Last recorded implementation verification: **2026-08-28**
+Last recorded implementation verification: **2026-08-31**
 
 The product/architecture and frontend-artifact alignment has been verified
 with:
@@ -580,6 +578,23 @@ The earlier W2 repository-wide validation evidence remains historical. The
 current W3-07 run also passes `git diff --check` and introduces no dependency
 or generated-client changes.
 
+The W3-08 verification run passed the Operations suite (9 files, 21 tests),
+typecheck, Oxlint, production build, and the generated
+`/purchasing/[purchaseId]` route. Real browser/API/PostgreSQL evidence covered
+unauthenticated, forbidden, and `purchase.read` sessions; exact Event/status
+filters; invalid filters without a request; opaque previous/next cursor pages;
+direct detail, invalid UUID, not-found, explicit purchaser/payer and ordered
+participant snapshots; logout/private-cache removal; heading focus; readable
+desktop cards/table; and 360px list/detail layouts with no horizontal overflow.
+The live Penpot page 24 filter/results/status hierarchy was applied without its
+uncontracted KPI cards, mutation action, totals, or lower workflow panel.
+
+`make lint typecheck test build compose-check` passed across the repository,
+and the full database-enabled Go suite passed on a separately migrated fresh
+PostgreSQL database. `make validate` still stops only at the same 18
+pre-existing Go formatter drifts; W3-08 changes no Go file, dependency,
+contract, migration, or generated client.
+
 Production Chrome smoke ran against both independently started Next apps.
 Storefront and Operations direct routes hydrated correctly; Storefront client
 navigation worked; and both PWA status components reported the shell ready for
@@ -598,7 +613,7 @@ The API provides `/health`, PostgreSQL-backed `/ready`, graceful shutdown, the
 bounded guest Event/Offering catalogue, and transactional Operations
 Event/Offering commands. It has authorized Operations Purchase reads and
 `POST /api/public/v1/purchases`; Storefront checkout and inline confirmation
-are implemented, while Operations Purchase screens remain unimplemented.
+plus Operations Purchase list/detail are implemented.
 
 ---
 
@@ -657,8 +672,9 @@ scope, polling/SSE, mobile web, and bounded degraded-connectivity boundary.
 
 ## Current Risks
 
-1. Event/Offering APIs and frontend flows plus the Common Purchase backend and
-   Storefront checkout exist; Operations Purchase screens remain.
+1. Event/Offering APIs and frontend flows, Common Purchase backend/Storefront
+   checkout, and Operations Purchase reads exist; Payment verification and
+   eligibility/activation remain the next vertical-slice gap.
 2. The public limiter is intentionally per process. Ingress/CDN enforcement is
    still required for a uniform multi-replica rate limit and key-filling abuse.
 3. Migration/repository verification used only an explicitly disposable local
@@ -684,9 +700,8 @@ scope, polling/SSE, mobile web, and bounded degraded-connectivity boundary.
 
 ## Recommended Next Task
 
-Execute W3-08 Operations Purchase list/detail next, then W3-09 cross-surface
-safety tests. Payment instructions, tracking, and token recovery remain later
-scope.
+Execute W3-09 cross-surface safety tests next. Payment instructions, tracking,
+and token recovery remain later scope.
 
 The recommended first slice remains:
 
@@ -719,13 +734,14 @@ Week 2 Event and Offering discovery/administration
 Week 3 backend: Party identity, role mapping, Purchase persistence/reads,
 snapshots/totals, quota reservation, and atomic guest checkout (W3-01–W3-06)
 W3-07 Storefront direct checkout form and inline confirmation
+W3-08 Operations Purchase list and detail
 ```
 
-### In Progress
+### Ready Next
 
 ```text
 First qurban vertical slice
-W3-08 Operations Purchase views
+W3-09 cross-surface safety closure
 ```
 
 ### Not Started
@@ -744,7 +760,7 @@ Last synchronized planning review: **2026-08-24**
 - `MVP-DELIVERY-ROADMAP.md` supersedes the former eight-week commerce-only
   plan with a 16-week Full Event-Day MVP.
 - The live `Qurban MVP Project Tracker` contains 127 tasks through W16-09:
-  22 `Done`, W3-08 `Ready`, and W3-09 plus 103 other tasks `Backlog`.
+  23 `Done`, W3-09 `Ready`, and 103 other tasks `Backlog`.
 - Planned effort is 723 hours. Actual Hours remain blank because no measured
   time was supplied.
 - All unfinished tracker dependencies resolve to existing earlier task IDs and

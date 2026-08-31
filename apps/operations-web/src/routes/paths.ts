@@ -14,6 +14,10 @@ export function offeringPath(eventId: string, offeringId: string): string {
   return `${eventPath(eventId)}/offerings/${encodeURIComponent(offeringId)}`;
 }
 
+export function purchasePath(purchaseId: string): string {
+  return `${paths.purchasing}/${encodeURIComponent(purchaseId)}`;
+}
+
 export function isActivePath(pathname: string, target: string): boolean {
   return pathname === target || pathname.startsWith(`${target}/`);
 }
