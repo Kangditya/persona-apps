@@ -58,7 +58,7 @@ func TestRepositoryPostgreSQL(t *testing.T) {
         EventID: eventID, PurchaseRef: prefix, PurchaserPartyID: purchaserID, PayerPartyID: payerID,
         OfferingID: offeringID, OfferingNameSnapshot: "Stored share", OfferingKindSnapshot: "SHARE",
         OfferingUnitPriceMinor: 100, ParticipantCapacitySnapshot: 2, TotalAmountMinor: 200, CurrencyCode: "IDR",
-        Participants: []PurchaseParticipantInput{{PartyID: &purchaserID, DisplayName: "Purchaser"}, {DisplayName: "Name only"}},
+        Participants:    []PurchaseParticipantInput{{PartyID: &purchaserID, DisplayName: "Purchaser"}, {DisplayName: "Name only"}},
         AccessTokenHash: hash[:],
     }
     purchase, err := NewPurchase(input)
@@ -150,10 +150,10 @@ func availableIntegrationEventYear(t *testing.T, ctx context.Context, database *
 }
 
 func cleanupIntegrationPurchases(t *testing.T, ctx context.Context, database *sql.DB, eventID, offeringID, purchaserID, payerID string) {
-	t.Helper()
-	if eventID != "" {
-		_, _ = database.ExecContext(ctx, `DELETE FROM quota_reservations WHERE event_id = $1`, eventID)
-		_, _ = database.ExecContext(ctx, `DELETE FROM purchase_status_history WHERE purchase_id IN (SELECT id FROM purchases WHERE event_id = $1)`, eventID)
+    t.Helper()
+    if eventID != "" {
+        _, _ = database.ExecContext(ctx, `DELETE FROM quota_reservations WHERE event_id = $1`, eventID)
+        _, _ = database.ExecContext(ctx, `DELETE FROM purchase_status_history WHERE purchase_id IN (SELECT id FROM purchases WHERE event_id = $1)`, eventID)
         _, _ = database.ExecContext(ctx, `DELETE FROM purchase_participants WHERE event_id = $1`, eventID)
         _, _ = database.ExecContext(ctx, `DELETE FROM purchases WHERE event_id = $1`, eventID)
     }

@@ -133,6 +133,30 @@ describe("checkout retry and error presentation", () => {
     });
   });
 
+  it("uses a new key for an edited intent without mutating the frozen request", () => {
+    const keys = ["intent-one", "intent-two"];
+    const firstInput = buildCheckoutRequest(offeringId, 2, draft());
+    const first = createCheckoutIntent(firstInput, () => keys.shift() ?? "");
+    const second = createCheckoutIntent(
+      buildCheckoutRequest(
+        offeringId,
+        2,
+        draft({
+          participants: [
+            { rowId: "participant-1", kind: "purchaser", displayName: "" },
+            { rowId: "participant-2", kind: "name", displayName: "Budi" },
+          ],
+        }),
+      ),
+      () => keys.shift() ?? "",
+    );
+
+    expect(first.key).toBe("intent-one");
+    expect(second.key).toBe("intent-two");
+    expect(first.input.participants[1]).toEqual({ display_name: "Ahmad" });
+    expect(second.input.participants[1]).toEqual({ display_name: "Budi" });
+  });
+
   it("allows same-intent retry only for uncertain service failures", () => {
     expect(
       checkoutErrorState(
@@ -154,6 +178,26 @@ describe("checkout retry and error presentation", () => {
       ),
     ).toMatchObject({
       message: "Participant quota is no longer available for this Offering.",
+      retryOriginal: false,
+    });
+    expect(
+      checkoutErrorState(
+        new ApiError("conflict", "replay", 409, {
+          code: "idempotency_conflict",
+        }),
+      ),
+    ).toMatchObject({
+      message: "This checkout retry no longer matches the original request.",
+      retryOriginal: false,
+    });
+    expect(
+      checkoutErrorState(
+        new ApiError("validation", "large", 413, {
+          code: "request_too_large",
+        }),
+      ),
+    ).toMatchObject({
+      message: "The checkout request is too large.",
       retryOriginal: false,
     });
   });

@@ -12,7 +12,7 @@ const maxPartyReferenceLength = 64
 
 var (
     ErrInvalidRelationships = errors.New("invalid purchase relationships")
-    partyReferencePattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+    partyReferencePattern   = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 )
 
 type PartyDeclarationInput struct {

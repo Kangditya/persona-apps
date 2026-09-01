@@ -87,11 +87,13 @@ describe("Operations Purchase API", () => {
 
   it("parses detail-only participant snapshots and optional Party fields", async () => {
     let capturedURL = "";
+    let capturedInit: RequestInit | undefined;
     const api = createPurchasesApi(
       createOperationsApi({
         baseUrl: "https://api.example.test/",
-        fetch: async (input) => {
+        fetch: async (input, init) => {
           capturedURL = String(input);
+          capturedInit = init;
           return Response.json({ data: detailPayload });
         },
       }),
@@ -108,6 +110,11 @@ describe("Operations Purchase API", () => {
     expect(capturedURL).toBe(
       `https://api.example.test/api/operations/v1/purchases/${purchaseId}`,
     );
+    expect(capturedInit?.method).toBeUndefined();
+    expect(capturedInit?.credentials).toBe("include");
+    const headers = new Headers(capturedInit?.headers);
+    expect(headers.get("X-CSRF-Token")).toBeNull();
+    expect(headers.get("Idempotency-Key")).toBeNull();
   });
 
   it("preserves an absent payer without inferring the purchaser", async () => {

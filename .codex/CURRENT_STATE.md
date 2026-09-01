@@ -28,7 +28,9 @@ Operations command/query routes are implemented. Operations Event/Offering and
 Storefront public catalogue screens are implemented. Storefront direct
 checkout and its inline safe Purchase confirmation are now implemented over the
 public Purchase command. Operations Purchase list/detail is implemented over
-the permission-gated Operations reads.
+the permission-gated Operations reads. W3-09 now closes the remaining Week 3
+cross-surface validation, authorization-ordering, semantic-idempotency,
+last-unit-contention, response-exposure, and client-token-retention gaps.
 
 The product direction has changed from a generic single-brand commerce and POS platform into a:
 
@@ -525,7 +527,7 @@ Current replacements:
 
 ## Current Verification State
 
-Last recorded implementation verification: **2026-08-31**
+Last recorded implementation verification: **2026-09-01**
 
 The product/architecture and frontend-artifact alignment has been verified
 with:
@@ -533,6 +535,41 @@ with:
 ```bash
 make validate
 ```
+
+W3-09 passed the canonical `make validate` gate after normalizing the 18
+previously reported Week 3 Go formatter drifts. The PostgreSQL-backed composed
+checkout tests now prove six zero-effect trust-boundary rejections, semantic
+JSON replay with byte-identical response/token, changed-intent conflict,
+same-key concurrency, failed reference-attempt rollback, exact public
+allowlists, safe logs/outbox/encrypted replay, and three repeated distinct-key
+last-unit races with exactly one winner. Operations composed tests prove
+missing, forbidden, expired, and revoked sessions stop before a deliberately
+unavailable Purchase repository, while permitted list/detail responses retain
+their exact private allowlists.
+
+The Storefront suite now passes 10 files / 32 tests. The raw Purchase token is
+still validated from the contracted response but discarded at the Storefront
+API boundary, so TanStack Mutation state receives only the safe Purchase
+confirmation. The Operations suite remains 9 files / 21 tests and additionally
+asserts credentialed detail GETs carry no CSRF or idempotency headers.
+
+The full PostgreSQL-enabled Go suite, `go vet ./...`, `go build ./...`, focused
+`-race` coverage, migration validate/down-one/up-one lifecycle, Compose config,
+and both production frontend builds passed against a disposable PostgreSQL 18
+database. Redocly CLI 2.46.1 reports zero errors and the unchanged baseline of
+one Storefront plus five Operations warnings.
+
+Current real-browser evidence used the production Next.js proxy, the real Go
+API, disposable PostgreSQL, and the local OIDC issuer. It covered Storefront
+client validation, preserved quota-conflict state, edited-intent success,
+explicit distinct payer plus name-only participant roles, safe 862px and 360px
+confirmation, Operations signed-out/forbidden/permitted states, exact filters,
+list/detail snapshots, logout/private direct-return protection, and 360px
+no-overflow layout. The in-app browser capped the requested Operations desktop
+viewport at 1280px; W3-08's unchanged Penpot-aligned desktop evidence remains
+the 1440px reference. Console warnings/errors were empty, and deterministic
+service-worker tests continue to prove all API/auth/business data is
+network-only.
 
 W2-05 through W2-08 are implemented and verified. The Event/Offering slice
 passed `make validate`, the full Go suite with database integration enabled
@@ -613,7 +650,8 @@ The API provides `/health`, PostgreSQL-backed `/ready`, graceful shutdown, the
 bounded guest Event/Offering catalogue, and transactional Operations
 Event/Offering commands. It has authorized Operations Purchase reads and
 `POST /api/public/v1/purchases`; Storefront checkout and inline confirmation
-plus Operations Purchase list/detail are implemented.
+plus Operations Purchase list/detail are implemented and now have the complete
+Week 3 cross-surface safety evidence described above.
 
 ---
 
@@ -700,8 +738,8 @@ scope, polling/SSE, mobile web, and bounded degraded-connectivity boundary.
 
 ## Recommended Next Task
 
-Execute W3-09 cross-surface safety tests next. Payment instructions, tracking,
-and token recovery remain later scope.
+Execute W4-01 append-oriented Payment submission and evidence metadata next.
+Payment instructions, tracking, and token recovery remain later scope.
 
 The recommended first slice remains:
 
@@ -735,20 +773,21 @@ Week 3 backend: Party identity, role mapping, Purchase persistence/reads,
 snapshots/totals, quota reservation, and atomic guest checkout (W3-01–W3-06)
 W3-07 Storefront direct checkout form and inline confirmation
 W3-08 Operations Purchase list and detail
+W3-09 cross-surface safety closure
 ```
 
 ### Ready Next
 
 ```text
 First qurban vertical slice
-W3-09 cross-surface safety closure
+W4-01 append-oriented Payment submission and evidence metadata
 ```
 
 ### Not Started
 
 ```text
-W3-09 cross-surface safety tests, Payment/activation, and the Full Event-Day
-operational roadmap from teams/Livestock through controlled pilot
+Payment/activation and the Full Event-Day operational roadmap from
+teams/Livestock through controlled pilot
 ```
 
 ---

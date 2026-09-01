@@ -53,11 +53,6 @@ export type CreatedPurchase = {
   createdAt: string;
 };
 
-export type CreatePurchaseResult = {
-  purchase: CreatedPurchase;
-  accessToken: string;
-};
-
 type PurchasesClient = Pick<StorefrontApi, "request">;
 
 export function createPurchasesApi(client: PurchasesClient = storefrontApi) {
@@ -66,7 +61,7 @@ export function createPurchasesApi(client: PurchasesClient = storefrontApi) {
       input: CreatePurchaseRequest,
       idempotencyKey: string,
       request?: ApiRequest,
-    ): Promise<CreatePurchaseResult> {
+    ): Promise<CreatedPurchase> {
       if (!idempotencyKeyPattern.test(idempotencyKey)) {
         throw new ApiError("validation", "The checkout retry key is invalid");
       }
@@ -86,7 +81,7 @@ export function createPurchasesApi(client: PurchasesClient = storefrontApi) {
 
 export const purchasesApi = createPurchasesApi();
 
-function parseCreatePurchaseResponse(payload: unknown): CreatePurchaseResult {
+function parseCreatePurchaseResponse(payload: unknown): CreatedPurchase {
   if (!isRecord(payload) || !onlyKeys(payload, ["data"])) {
     throw invalidResponse();
   }
@@ -99,10 +94,7 @@ function parseCreatePurchaseResponse(payload: unknown): CreatePurchaseResult {
   ) {
     throw invalidResponse();
   }
-  return {
-    purchase: parsePurchase(data.purchase),
-    accessToken: data.access_token,
-  };
+  return parsePurchase(data.purchase);
 }
 
 function parsePurchase(value: unknown): CreatedPurchase {

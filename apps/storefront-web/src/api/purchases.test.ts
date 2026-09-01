@@ -63,13 +63,13 @@ describe("Storefront Purchase API", () => {
       "checkout-key-123",
     );
 
-    expect(result.purchase).toMatchObject({
+    expect(result).toMatchObject({
       purchaseRef: "QRB-2026-ABCDEFGHIJKLMNOP",
       participantCount: 2,
       totalAmountMinor: 200,
       status: "PENDING_PAYMENT",
     });
-    expect(result.accessToken).toHaveLength(43);
+    expect(result).not.toHaveProperty("accessToken");
     expect(fetch).toHaveBeenCalledOnce();
     const [url, request] = fetch.mock.calls[0] ?? [];
     expect(url).toBe("/api/public/v1/purchases");

@@ -51,7 +51,7 @@ func TestRepositoryGetAndListReturnSnapshotsAndPartySummaries(t *testing.T) {
     now := time.Date(2026, time.August, 21, 10, 0, 0, 0, time.UTC)
     purchaseID := "11111111-1111-1111-1111-111111111111"
     detailColumns := []string{"id", "event_id", "purchase_ref", "channel", "purchaser_party_id", "payer_party_id", "offering_id", "offering_name_snapshot", "offering_kind_snapshot", "offering_unit_price_minor", "participant_capacity_snapshot", "participant_count", "total_amount_minor", "currency_code", "status", "version", "created_at", "updated_at", "purchaser_id", "purchaser_display_name", "payer_id", "payer_display_name"}
-    mock.ExpectQuery(regexp.QuoteMeta("SELECT "+purchaseDetailColumns)).WithArgs(purchaseID).WillReturnRows(
+    mock.ExpectQuery(regexp.QuoteMeta("SELECT " + purchaseDetailColumns)).WithArgs(purchaseID).WillReturnRows(
         sqlmock.NewRows(detailColumns).AddRow(purchaseID, "event-id", "purchase-ref", "COMMON", "purchaser-id", "payer-id", "offering-id", "Share", "SHARE", 100, 2, 2, 200, "IDR", "PENDING_PAYMENT", 1, now, now, "purchaser-id", "Siti", "payer-id", "Budi"),
     )
     mock.ExpectQuery("SELECT id, party_id, sequence_no, display_name_snapshot FROM purchase_participants").WithArgs(purchaseID).WillReturnRows(
@@ -104,7 +104,7 @@ func testPurchase(t *testing.T) Purchase {
         EventID: "event-id", PurchaseRef: "purchase-ref", PurchaserPartyID: purchaser, PayerPartyID: "payer-id",
         OfferingID: "offering-id", OfferingNameSnapshot: "Share", OfferingKindSnapshot: "SHARE",
         OfferingUnitPriceMinor: 100, ParticipantCapacitySnapshot: 2, TotalAmountMinor: 200, CurrencyCode: "IDR",
-        Participants: []PurchaseParticipantInput{{PartyID: &purchaser, DisplayName: "Siti"}, {DisplayName: "Ahmad"}},
+        Participants:    []PurchaseParticipantInput{{PartyID: &purchaser, DisplayName: "Siti"}, {DisplayName: "Ahmad"}},
         AccessTokenHash: make([]byte, 32),
     })
     if err != nil {

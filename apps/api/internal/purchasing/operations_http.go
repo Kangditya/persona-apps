@@ -151,7 +151,7 @@ func toOperationsPurchase(detail Detail, includeParticipants bool) operationsPur
     purchase := detail.Purchase
     result := operationsPurchase{
         ID: purchase.ID, EventID: purchase.EventID, PurchaseRef: purchase.PurchaseRef, Channel: purchase.Channel,
-        Purchaser: operationsPartySummary{ID: detail.Purchaser.ID, DisplayName: detail.Purchaser.DisplayName},
+        Purchaser:  operationsPartySummary{ID: detail.Purchaser.ID, DisplayName: detail.Purchaser.DisplayName},
         OfferingID: purchase.OfferingID, OfferingNameSnapshot: purchase.OfferingNameSnapshot,
         ParticipantCount: purchase.ParticipantCount, TotalAmountMinor: purchase.TotalAmountMinor,
         CurrencyCode: purchase.CurrencyCode, Status: purchase.Status,

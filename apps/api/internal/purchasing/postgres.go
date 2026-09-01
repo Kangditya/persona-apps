@@ -205,12 +205,12 @@ func scanPurchase(value scanner) (Purchase, error) {
 }
 
 func scanDetail(value scanner) (Detail, error) {
-	var detail Detail
-	var channel, status string
-	var purchasePayerID, payerID, payerDisplayName sql.NullString
-	if err := value.Scan(
-		&detail.Purchase.ID, &detail.Purchase.EventID, &detail.Purchase.PurchaseRef, &channel,
-		&detail.Purchase.PurchaserPartyID, &purchasePayerID, &detail.Purchase.OfferingID,
+    var detail Detail
+    var channel, status string
+    var purchasePayerID, payerID, payerDisplayName sql.NullString
+    if err := value.Scan(
+        &detail.Purchase.ID, &detail.Purchase.EventID, &detail.Purchase.PurchaseRef, &channel,
+        &detail.Purchase.PurchaserPartyID, &purchasePayerID, &detail.Purchase.OfferingID,
         &detail.Purchase.OfferingNameSnapshot, &detail.Purchase.OfferingKindSnapshot,
         &detail.Purchase.OfferingUnitPriceMinor, &detail.Purchase.ParticipantCapacitySnapshot,
         &detail.Purchase.ParticipantCount, &detail.Purchase.TotalAmountMinor, &detail.Purchase.CurrencyCode,
@@ -219,16 +219,16 @@ func scanDetail(value scanner) (Detail, error) {
     ); err != nil {
         return Detail{}, err
     }
-	detail.Purchase.Channel = Channel(channel)
-	detail.Purchase.Status = Status(status)
-	if purchasePayerID.Valid {
-		payerIDValue := purchasePayerID.String
-		detail.Purchase.PayerPartyID = &payerIDValue
-	}
-	if payerID.Valid {
-		payerIDValue := payerID.String
-		detail.Payer = &PartySummary{ID: payerIDValue, DisplayName: payerDisplayName.String}
-	}
+    detail.Purchase.Channel = Channel(channel)
+    detail.Purchase.Status = Status(status)
+    if purchasePayerID.Valid {
+        payerIDValue := purchasePayerID.String
+        detail.Purchase.PayerPartyID = &payerIDValue
+    }
+    if payerID.Valid {
+        payerIDValue := payerID.String
+        detail.Payer = &PartySummary{ID: payerIDValue, DisplayName: payerDisplayName.String}
+    }
     detail.Purchase.CreatedAt = detail.Purchase.CreatedAt.UTC()
     detail.Purchase.UpdatedAt = detail.Purchase.UpdatedAt.UTC()
     return detail, nil

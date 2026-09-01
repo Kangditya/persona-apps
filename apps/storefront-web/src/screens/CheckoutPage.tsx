@@ -151,7 +151,7 @@ function CheckoutContent({
     }, [create.isError, errors]);
 
     if (create.isSuccess) {
-        return <CheckoutConfirmation purchase={create.data.purchase} />;
+        return <CheckoutConfirmation purchase={create.data} />;
     }
 
     const serverError = create.isError

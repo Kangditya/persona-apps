@@ -272,8 +272,16 @@ func assertJSONKeys(t *testing.T, data map[string]any, allowed ...string) {
     }
     for key := range data {
         if _, allowed := allowlist[key]; !allowed {
-            t.Fatalf("public response exposed unexpected field %q in %#v", key, data)
+            t.Fatalf("response exposed unexpected field %q", key)
         }
+    }
+}
+
+func assertExactJSONKeys(t *testing.T, data map[string]any, expected ...string) {
+    t.Helper()
+    assertJSONKeys(t, data, expected...)
+    if len(data) != len(expected) {
+        t.Fatalf("response field count = %d, want %d", len(data), len(expected))
     }
 }
 
