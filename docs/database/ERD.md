@@ -695,7 +695,8 @@ by status and history.
 - Primary key: `id uuid`; business identifier: unique `payment_ref`.
 - Important columns: event, payer, exactly one purchase/saving/program target, amount, currency, method, provider/evidence references, lifecycle status, verification fields, rejection reason, timestamps.
 - Foreign keys/constraints: exactly one target context; event-aware target FKs; positive amount; optional provider reference unique.
-- Indexes: event/status, target indexes, and provider reference.
+- Indexes: event/status, target indexes, provider reference, and one partial
+  unique `SUBMITTED` Payment per Purchase.
 
 #### `payment_status_history` — NEW
 
@@ -1179,7 +1180,7 @@ The existing `livestock`, location history, `allocations`, slaughter, minimal
 distribution, audit, outbox, and idempotency tables remain foundations. Active
 implementation tasks must re-inspect the actual schema and add only the columns,
 constraints, histories, or tables required by the approved lifecycle; they must
-not rewrite migrations 0001 through 0006.
+not rewrite migrations 0001 through 0007.
 
 ### Offline queue boundary
 

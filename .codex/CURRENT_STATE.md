@@ -31,6 +31,12 @@ public Purchase command. Operations Purchase list/detail is implemented over
 the permission-gated Operations reads. W3-09 now closes the remaining Week 3
 cross-surface validation, authorization-ordering, semantic-idempotency,
 last-unit-contention, response-exposure, and client-token-retention gaps.
+W4-01 now implements the append-oriented manual-transfer Payment domain,
+PostgreSQL repository, Purchase-token authentication, bounded evidence
+metadata processing, quota pause/reacquisition, durable semantic replay, and
+one-current-submission database guard behind an evidence-storage port. The
+public evidence route remains unwired until W4-02 supplies an approved durable
+private adapter.
 
 The product direction has changed from a generic single-brand commerce and POS platform into a:
 
@@ -185,6 +191,11 @@ Current backend capabilities:
   Event/Offering pricing and capacity snapshots, 24-hour quota reservation,
   `QRB-<year>-<80-bit Base32>` support reference, SHA-256 token storage, two
   minimized Purchase outbox events, and durable encrypted idempotency replay;
+- the W4-01 Payment submission module behind an unwired storage port: strict
+  Purchase Bearer authentication, multipart JPEG/PNG/PDF validation up to
+  10 MiB, SHA-256 metadata, append-only `SUBMITTED` Payment/history persistence,
+  reservation-expiry pause or capacity-checked reacquisition, one minimized
+  outbox event, and durable semantic replay;
 - request-correlated public JSON errors, recovery, no-store catalogue headers,
   bounded per-process guest rate limiting, and disabled-by-default proxy trust.
 - permission-gated Operations Event/Offering list, detail, create, patch, and
@@ -217,7 +228,8 @@ Implemented platform foundations:
 - request-ID middleware, structured error envelopes, transaction helper,
   caller-transaction audit writer, and encrypted idempotency replay executor.
 
-ADR-043 through ADR-045 and ADR-048 through ADR-050 define these contracts.
+ADR-043 through ADR-045, ADR-048 through ADR-050, and ADR-056 define these
+contracts.
 Event/Offering Operations commands and Storefront Common Purchase checkout
 compose the platform foundations transactionally. Guest checkout has no request
 authentication requirement, but its route is registered only when the existing
@@ -274,13 +286,15 @@ Implemented:
 - repository Make targets for the complete normal CLI surface.
 
 The proposed qurban business schema is documented in `docs/database/ERD.md`
-and scripted in the six numbered migration pairs under
+and scripted in the seven numbered migration pairs under
 `apps/api/migrations`. The schema includes foundation, commerce/funding,
 operations, audit, outbox, command idempotency, seed metadata, and Phase 1
 commerce-safety constraints for Event suspension, Offering quota, intended
 participants, quota reservations, evidence metadata, Purchase tokens, and
-Operations sessions. Event/Offering repositories and both public reads and
-privileged commands use the relevant tables.
+Operations sessions. Migration 0007 adds the partial unique guard permitting
+only one `SUBMITTED` Payment per Purchase while preserving rejected attempts.
+Event/Offering repositories, both public reads, privileged commands, and the
+W4-01 Payment repository use the relevant tables.
 
 The reference seed group is intentionally empty. The development group only
 contains `development.sample-event`. No migration or seed has been run against
@@ -353,10 +367,13 @@ Offering boundary, one-Offering direct checkout, participant-unit quota
 reservation, append-oriented payment evidence, and atomic exactly-once Sohibul
 Qurban activation.
 
-Migration 0005 now scripts the supporting Offering quota, quota-reservation,
-participant, evidence, token, session, and audit storage. No runtime command
-currently enforces evidence, payment-verification, participant-activation, or
-later reservation transitions. W3-01 through W3-06 provide Party persistence,
+Migration 0005 scripts the supporting Offering quota, quota-reservation,
+participant, evidence, token, session, and audit storage; migration 0007 adds
+the one-current-submission guard. W4-01 now enforces evidence metadata,
+Purchase-token authorization, append-oriented submission, expiry pause, and
+reservation reacquisition behind an unwired evidence-store port. Payment
+verification, participant activation, and other later reservation transitions
+remain unimplemented. W3-01 through W3-06 provide Party persistence,
 explicit role-link validation, canonical `COMMON` Purchase persistence and
 authorized Operations reads, source-derived snapshots with checked
 per-participant totals, Event-then-Offering quota locking with 24-hour holds,
@@ -385,9 +402,8 @@ and atomic public checkout with durable encrypted replay.
 
 ### Payment and Funding
 
-- payment methods;
+- concrete durable/private evidence storage and production route wiring;
 - payment instructions;
-- payment confirmation;
 - payment verification;
 - installment ledger;
 - saving balances;
@@ -527,7 +543,7 @@ Current replacements:
 
 ## Current Verification State
 
-Last recorded implementation verification: **2026-09-01**
+Last recorded implementation verification: **2026-09-03**
 
 The product/architecture and frontend-artifact alignment has been verified
 with:
@@ -535,6 +551,18 @@ with:
 ```bash
 make validate
 ```
+
+W4-01 adds the Payment module and migration 0007 without a new dependency or
+production route. Its disposable PostgreSQL 18 evidence covers JPEG/PNG/PDF
+boundaries, exact 10 MiB acceptance, semantic replay across different multipart
+boundaries, changed-intent conflict, same/different-key concurrency, one
+submitted Payment/history/outbox effect, SHA-256 metadata, durable encrypted
+replay, wrong-token denial before storage, rollback on storage/database failure,
+released-reservation reacquisition, expired-reservation quota failure, exact
+amount/currency checks, and zero-total state conflict. Focused tests, race
+coverage, the complete PostgreSQL-enabled Go suite, migration 7 down/up, Go
+vet/build, Storefront OpenAPI lint, and repository validation passed. W4-02 is
+still required before the public upload route is registered.
 
 W3-09 passed the canonical `make validate` gate after normalizing the 18
 previously reported Week 3 Go formatter drifts. The PostgreSQL-backed composed
@@ -702,7 +730,8 @@ The following decisions remain unresolved outside the Full Event-Day
 These rules must not be invented during implementation.
 
 ADR-048 through ADR-050 resolve the current Common Purchase role, price, and
-durable checkout rules. ADR-051 through ADR-055 resolve the Full Event-Day MVP
+durable checkout rules; ADR-056 resolves append-oriented manual-transfer
+submission. ADR-051 through ADR-055 resolve the Full Event-Day MVP
 execution calendar, teams/shifts/incidents, attendance modes, distribution
 scope, polling/SSE, mobile web, and bounded degraded-connectivity boundary.
 
@@ -711,8 +740,9 @@ scope, polling/SSE, mobile web, and bounded degraded-connectivity boundary.
 ## Current Risks
 
 1. Event/Offering APIs and frontend flows, Common Purchase backend/Storefront
-   checkout, and Operations Purchase reads exist; Payment verification and
-   eligibility/activation remain the next vertical-slice gap.
+   checkout, Operations Purchase reads, and the unwired W4-01 Payment submission
+   module exist; concrete evidence storage/route wiring, Payment verification,
+   and eligibility/activation remain the next vertical-slice gaps.
 2. The public limiter is intentionally per process. Ingress/CDN enforcement is
    still required for a uniform multi-replica rate limit and key-filling abuse.
 3. Migration/repository verification used only an explicitly disposable local
@@ -720,7 +750,8 @@ scope, polling/SSE, mobile web, and bounded degraded-connectivity boundary.
 4. OIDC-backed Operations sessions and Event/Offering permissions are enforced;
    operator/role administration and a real configured provider test identity
    remain deployment work.
-5. Public checkout has transactional proof, but Payment, activation,
+5. Public checkout and W4-01 Payment submission have transactional proof, but
+   no concrete evidence adapter/route exists and verification, activation,
    Livestock, Allocation, Slaughter, Distribution, customer event-day status,
    and multi-team field flows remain unimplemented.
 6. Week 2 writes transactional outbox rows but has no background publisher,
@@ -738,8 +769,8 @@ scope, polling/SSE, mobile web, and bounded degraded-connectivity boundary.
 
 ## Recommended Next Task
 
-Execute W4-01 append-oriented Payment submission and evidence metadata next.
-Payment instructions, tracking, and token recovery remain later scope.
+Execute W4-02 private evidence storage and route wiring next. Payment
+instructions, tracking, and token recovery remain later scope.
 
 The recommended first slice remains:
 
@@ -774,20 +805,21 @@ snapshots/totals, quota reservation, and atomic guest checkout (W3-01–W3-06)
 W3-07 Storefront direct checkout form and inline confirmation
 W3-08 Operations Purchase list and detail
 W3-09 cross-surface safety closure
+W4-01 append-oriented Payment submission and evidence metadata behind a storage port
 ```
 
 ### Ready Next
 
 ```text
 First qurban vertical slice
-W4-01 append-oriented Payment submission and evidence metadata
+W4-02 private evidence storage and route wiring
 ```
 
 ### Not Started
 
 ```text
-Payment/activation and the Full Event-Day operational roadmap from
-teams/Livestock through controlled pilot
+Payment verification/activation and the Full Event-Day operational roadmap
+from teams/Livestock through controlled pilot
 ```
 
 ---

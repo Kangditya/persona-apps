@@ -75,6 +75,9 @@ the database CLI and Make targets.
   ├── qurban_events
   ├── offerings
   └── used-reservation aggregation index
+        │
+0007 submitted Payment guard
+  └── one SUBMITTED Payment per Purchase
 ```
 
 ## Migration inventory
@@ -87,6 +90,7 @@ the database CLI and Make targets.
 |     0004 | `0004_schema_seeds.up.sql`                           | Metadata           | `schema_seeds`                                                                                                                                                                                       | Track deterministic seed execution separately from migration version state.                                                                    | None.    | Low: independent metadata table.                                                                   |
 |     0005 | `0005_mvp_commerce_safety.up.sql`                    | Additive safety    | qurban event, offering, purchase, payment, audit, intended participant, quota reservation, and session storage                                                                                       | Enforce Phase 1 lifecycle, quota, evidence, Purchase-token, and session safety without rewriting history.                                      | None.    | Medium: constraint changes require disposable-DB verification.                                     |
 |     0006 | `0006_add_event_offering_versions_and_bounds.up.sql` | Additive hardening | `qurban_events`, `offerings`, `quota_reservations`                                                                                                                                                   | Add optimistic versions, exact JSON-safe integer bounds, and the query-backed used-reservation aggregation index.                              | None.    | Medium: additive checks must be verified against existing rows and rollback drops version columns. |
+|     0007 | `0007_add_submitted_payment_guard.up.sql`            | Additive safety    | `payment_records`                                                                                                                                                                                    | Prevent concurrent different intents from creating more than one Payment awaiting review for a Purchase.                                       | None.    | Medium: pre-existing duplicate submitted rows must be resolved before the index can be applied.    |
 
 The matching `.down.sql` files are rollback scripts for each unit. Rollback is
 destructive for the unit being reverted and must only be used when the owning
@@ -177,6 +181,18 @@ deployment has confirmed that its data is disposable or separately backed up.
   is destructive for version values and must only run against a disposable or
   separately recovered deployment.
 
+### 0007 — Submitted Payment guard
+
+- Table: adds one partial unique index to `payment_records`.
+- Constraint: one Purchase may have at most one Payment with status
+  `SUBMITTED`; rejected and other terminal attempts remain append-oriented.
+- Data migration: none. Deployment preflight must detect existing duplicate
+  submitted rows before applying the index.
+- Compatibility impact: concurrent different idempotency keys now produce one
+  current review attempt and one stable state conflict instead of parallel
+  submitted evidence.
+- Rollback: drops only the partial unique index and preserves every Payment row.
+
 ## Constraint and index classification
 
 ### Schema-only migrations
@@ -193,8 +209,9 @@ migration must be added rather than editing these files.
 
 ### Constraint-hardening migrations
 
-Migration 0006 hardens existing Event/Offering tables with bounds required by
-the API's exact-integer contract. Future hardening may still be required after
+Migrations 0006 and 0007 harden existing Event/Offering and Payment tables with
+exact-integer bounds and one current submitted-Payment guard. Future hardening
+may still be required after
 real command flows establish policies for quota reservation, price locking,
 giveaway selection, Event-day attendance, allocation, Distribution, projection
 recovery, and authentication scope. ADR-051 through ADR-055 fix the Full

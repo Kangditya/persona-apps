@@ -1777,3 +1777,44 @@ entry is always available.
   conflict behavior.
 - A native mobile application, Redis, message broker, microservice, or
   WebSocket requires measured need and a separate accepted decision.
+
+---
+
+## ADR-056: Make manual-transfer evidence submission append-oriented and replayable
+
+**Status:** Accepted
+
+### Decision
+
+Phase 1 Common Purchase evidence submissions use method `MANUAL_TRANSFER` and
+create a new `SUBMITTED` Payment rather than mutating a rejected attempt.
+Payment references use `PAY-` plus 128 random bits encoded as uppercase,
+unpadded Base32. They are non-secret support identifiers, not authentication or
+idempotency credentials.
+
+Only one `SUBMITTED` Payment may exist for a Purchase. A partial unique index is
+the final different-key concurrency guard; rejected records remain immutable
+and a later submission uses a new command key and Payment row.
+
+The submission command authenticates the Purchase Bearer token before replay
+lookup. Its namespace is scoped to the Storefront command and Purchase UUID,
+and its semantic hash includes the Purchase, exact amount/currency, normalized
+filename, trusted media type, byte size, and SHA-256 digest rather than raw
+multipart boundaries. Successful replay is durable because duplicating the
+same evidence intent remains unacceptable after an arbitrary client timeout.
+
+The current Payment schema requires a positive amount. A zero-total Purchase
+therefore cannot submit evidence and returns a state conflict. Whether such a
+Purchase becomes eligible without Payment is a separate product decision.
+
+### Consequences
+
+- Evidence submission pauses an unexpired reservation or atomically expires
+  and reacquires a new numbered reservation under Event-then-Offering locks.
+- A reservation already paused for review rejects another submission before
+  storage work.
+- PostgreSQL stores only immutable evidence metadata and an opaque reference;
+  W4-02 separately decides and wires the durable private storage adapter.
+- The W4-01 handler remains unwired in production until that adapter exists.
+- No payment gateway, partial payment, refund, zero-price eligibility, token
+  recovery, or evidence-retention policy is introduced by this decision.

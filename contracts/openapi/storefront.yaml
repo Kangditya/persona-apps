@@ -268,7 +268,8 @@ paths:
         - PurchaseBearer: []
       x-idempotency:
         namespace: storefront.purchase.payment-evidence.submit
-        replay: exact request hash returns the original successful response
+        scope: identified Purchase UUID after Purchase Bearer authentication
+        replay: exact semantic request hash returns the original successful response durably
         mismatch: idempotency_conflict
       parameters:
         - $ref: "#/components/parameters/PurchaseID"
@@ -289,6 +290,8 @@ paths:
           headers:
             X-Request-ID:
               $ref: "#/components/headers/RequestID"
+            Cache-Control:
+              $ref: "#/components/headers/NoStoreCacheControl"
           content:
             application/json:
               schema:
@@ -704,12 +707,12 @@ components:
       additionalProperties: false
       required: [amount_minor, currency_code, evidence_file]
       properties:
-        amount_minor: { type: integer, minimum: 1 }
+        amount_minor: { type: integer, minimum: 1, maximum: 9007199254740991 }
         currency_code: { type: string, pattern: "^[A-Z]{3}$" }
         evidence_file:
           type: string
           format: binary
-          description: JPEG, PNG, or PDF; maximum 10 MiB.
+          description: JPEG, PNG, or PDF with matching content signature; maximum 10 MiB and a normalized filename of at most 255 Unicode characters.
     PublicPayment:
       type: object
       additionalProperties: false
@@ -717,8 +720,8 @@ components:
         [id, payment_ref, amount_minor, currency_code, status, submitted_at]
       properties:
         id: { type: string, format: uuid }
-        payment_ref: { type: string, minLength: 1 }
-        amount_minor: { type: integer, minimum: 1 }
+        payment_ref: { type: string, pattern: "^PAY-[A-Z2-7]{26}$" }
+        amount_minor: { type: integer, minimum: 1, maximum: 9007199254740991 }
         currency_code: { type: string, pattern: "^[A-Z]{3}$" }
         status: { type: string, enum: [SUBMITTED, VERIFIED, REJECTED] }
         submitted_at: { type: string, format: date-time }

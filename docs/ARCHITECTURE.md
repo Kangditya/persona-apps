@@ -1081,8 +1081,8 @@ Core purchasing, payment eligibility, quota, and allocation should remain transa
 
 ## 23. Architecture Decisions Required
 
-ADR-040 through ADR-050 resolve the current platform and Common Purchase
-baseline. ADR-051 through ADR-055 resolve Full Event-Day MVP duration, teams,
+ADR-040 through ADR-050 and ADR-056 resolve the current platform, Common
+Purchase, and Payment-submission baseline. ADR-051 through ADR-055 resolve Full Event-Day MVP duration, teams,
 attendance, distribution, realtime/mobile, and degraded-connectivity
 boundaries. Remaining decisions include:
 

@@ -24,6 +24,8 @@ var (
     ErrDuplicateReference = errors.New("duplicate purchase reference")
     ErrStateConflict      = errors.New("purchase state conflict")
     ErrQuotaUnavailable   = errors.New("purchase quota unavailable")
+    ErrUnauthenticated    = errors.New("purchase authentication required")
+    ErrForbidden          = errors.New("purchase access forbidden")
 )
 
 type Channel string
