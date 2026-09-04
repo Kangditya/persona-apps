@@ -227,7 +227,7 @@ func TestServerRegistersOperationsEventAndOfferingRoutesBehindAuthentication(t *
         t.Fatal(err)
     }
     logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, authentication, event.NewOperationsHandler(database, cipher, logger), offering.NewOperationsHandler(database, cipher, logger), purchasing.NewOperationsHandler(database, logger))
+    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, nil, authentication, event.NewOperationsHandler(database, cipher, logger), offering.NewOperationsHandler(database, cipher, logger), purchasing.NewOperationsHandler(database, logger), nil)
     if err != nil {
         t.Fatal(err)
     }
@@ -301,7 +301,7 @@ func newTestAuthentication(t *testing.T, database *sql.DB) *auth.Service {
 
 func newTestServer(t *testing.T, database readinessChecker, logger *slog.Logger, public config.PublicConfig) *http.Server {
     t.Helper()
-    server, err := NewServer(":0", database, logger, public, nil, nil, nil, nil, nil)
+    server, err := NewServer(":0", database, logger, public, nil, nil, nil, nil, nil, nil, nil)
     if err != nil {
         t.Fatal(err)
     }

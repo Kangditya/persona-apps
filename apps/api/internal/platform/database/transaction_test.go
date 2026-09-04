@@ -61,3 +61,21 @@ func TestWithinRollsBackOnErrorAndPanic(t *testing.T) {
         _ = Within(context.Background(), db, func(*sql.Tx) error { panic("panic") })
     })
 }
+
+func TestWithinPreservesCommitCauseAndUncertainty(t *testing.T) {
+    db, mock, err := sqlmock.New()
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer db.Close()
+    cause := errors.New("connection lost")
+    mock.ExpectBegin()
+    mock.ExpectCommit().WillReturnError(cause)
+    err = Within(context.Background(), db, func(*sql.Tx) error { return nil })
+    if !errors.Is(err, ErrCommitUncertain) || !errors.Is(err, cause) {
+        t.Fatalf("commit error = %v", err)
+    }
+    if err := mock.ExpectationsWereMet(); err != nil {
+        t.Fatal(err)
+    }
+}

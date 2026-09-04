@@ -1,9 +1,53 @@
 package config
 
 import (
+    "os"
     "reflect"
     "testing"
 )
+
+func TestLoadAPIEvidenceStorageConfiguration(t *testing.T) {
+    t.Setenv("DATABASE_URL", "postgres://example.invalid/db")
+    t.Setenv("APP_ENV", "development")
+    t.Setenv("EVIDENCE_STORAGE_ROOT", "")
+    t.Setenv("EVIDENCE_STORAGE_MODE", "")
+    t.Setenv("API_REPLICA_COUNT", "")
+    configuration, err := LoadAPI()
+    if err != nil || configuration.Evidence != nil {
+        t.Fatalf("disabled config/error = %#v/%v", configuration.Evidence, err)
+    }
+    for name, values := range map[string][3]string{
+        "mode without root": {"", "single-instance", ""}, "count without root": {"", "", "1"}, "wrong mode": {os.TempDir(), "multi", "1"}, "non-numeric": {os.TempDir(), "single-instance", "one"}, "wrong count": {os.TempDir(), "single-instance", "2"},
+    } {
+        t.Run(name, func(t *testing.T) {
+            t.Setenv("EVIDENCE_STORAGE_ROOT", values[0])
+            t.Setenv("EVIDENCE_STORAGE_MODE", values[1])
+            t.Setenv("API_REPLICA_COUNT", values[2])
+            if _, err := LoadAPI(); err == nil {
+                t.Fatal("unsafe evidence configuration accepted")
+            }
+        })
+    }
+    t.Setenv("EVIDENCE_STORAGE_ROOT", os.TempDir())
+    t.Setenv("EVIDENCE_STORAGE_MODE", "single-instance")
+    t.Setenv("API_REPLICA_COUNT", "")
+    configuration, err = LoadAPI()
+    if err != nil || configuration.Evidence == nil {
+        t.Fatalf("evidence config/error = %#v/%v", configuration.Evidence, err)
+    }
+    t.Setenv("APP_ENV", "staging")
+    t.Setenv("API_REPLICA_COUNT", "")
+    if _, err := LoadAPI(); err == nil {
+        t.Fatal("staging implicit replica count accepted")
+    }
+    t.Setenv("API_REPLICA_COUNT", "1")
+    if value, err := loadEvidence(Staging); err != nil || value == nil {
+        t.Fatalf("explicit staging storage = %#v/%v", value, err)
+    }
+    if value, err := loadEvidence(Production); err != nil || value == nil {
+        t.Fatalf("explicit production storage = %#v/%v", value, err)
+    }
+}
 
 func TestLoadRequiresAndValidatesEnvironment(t *testing.T) {
     t.Setenv("DATABASE_URL", "postgres://example.invalid/db")

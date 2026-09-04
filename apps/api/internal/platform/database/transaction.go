@@ -3,8 +3,12 @@ package database
 import (
     "context"
     "database/sql"
+    "errors"
     "fmt"
 )
+
+// ErrCommitUncertain means PostgreSQL may have committed after the connection failed.
+var ErrCommitUncertain = errors.New("transaction commit outcome is uncertain")
 
 // Within runs work in one transaction. A panic is rolled back and propagated.
 func Within(ctx context.Context, db *sql.DB, work func(*sql.Tx) error) (err error) {
@@ -27,7 +31,7 @@ func Within(ctx context.Context, db *sql.DB, work func(*sql.Tx) error) (err erro
         return err
     }
     if err := tx.Commit(); err != nil {
-        return fmt.Errorf("commit transaction: %w", err)
+        return fmt.Errorf("commit transaction: %w: %w", ErrCommitUncertain, err)
     }
     return nil
 }

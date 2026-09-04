@@ -10,6 +10,7 @@ import (
 
     "github.com/Kangditya/persona-apps/apps/api/internal/event"
     "github.com/Kangditya/persona-apps/apps/api/internal/offering"
+    "github.com/Kangditya/persona-apps/apps/api/internal/payment"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/cors"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/httpx"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/ratelimit"
@@ -17,7 +18,7 @@ import (
     "github.com/gin-gonic/gin"
 )
 
-func registerPublicRoutes(router *gin.Engine, events event.ActiveReader, offerings offering.PublicCatalogueReader, purchases *purchasing.PublicHandler, limiter *ratelimit.PublicLimiter, logger *slog.Logger, allowedOrigins map[string]struct{}) {
+func registerPublicRoutes(router *gin.Engine, events event.ActiveReader, offerings offering.PublicCatalogueReader, purchases *purchasing.PublicHandler, payments *payment.PublicHandler, limiter *ratelimit.PublicLimiter, logger *slog.Logger, allowedOrigins map[string]struct{}) {
     public := router.Group(publicAPIPrefix)
     methods := []string{http.MethodGet}
     headers := []string{"X-Request-ID"}
@@ -25,17 +26,30 @@ func registerPublicRoutes(router *gin.Engine, events event.ActiveReader, offerin
         methods = append(methods, http.MethodPost)
         headers = append(headers, "Content-Type", "Idempotency-Key")
     }
+    if payments != nil {
+        if purchases == nil {
+            methods = append(methods, http.MethodPost)
+            headers = append(headers, "Content-Type", "Idempotency-Key")
+        }
+        headers = append(headers, "Authorization")
+    }
     public.Use(cors.Middleware(cors.Policy{Origins: allowedOrigins, Methods: methods, Headers: headers}), publicNoStore(), publicRateLimit(limiter))
     event.RegisterPublicRoutes(public, events, logger)
     offering.RegisterPublicRoutes(public, offerings, logger)
     if purchases != nil {
         purchases.RegisterRoutes(public)
     }
+    if payments != nil {
+        payments.RegisterRoutes(public)
+    }
     for _, path := range []string{"/events/active", "/events/:event_id/offerings", "/offerings/:offering_id"} {
         public.OPTIONS(path, func(c *gin.Context) { c.Status(http.StatusNoContent) })
     }
     if purchases != nil {
         public.OPTIONS("/purchases", func(c *gin.Context) { c.Status(http.StatusNoContent) })
+    }
+    if payments != nil {
+        public.OPTIONS("/purchases/:purchase_id/payment-evidence", func(c *gin.Context) { c.Status(http.StatusNoContent) })
     }
 }
 

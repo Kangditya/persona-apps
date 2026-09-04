@@ -41,7 +41,7 @@ func TestOperationsPurchaseReadsPostgreSQL(t *testing.T) {
     operatorID := insertOperationsSession(t, database, prefix, token, csrf)
     logger := slog.New(slog.NewTextHandler(io.Discard, nil))
     authentication := newTestAuthentication(t, database)
-    deniedServer, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, authentication, nil, nil, purchasing.NewOperationsHandler(nil, logger))
+    deniedServer, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, nil, authentication, nil, nil, purchasing.NewOperationsHandler(nil, logger), nil)
     if err != nil {
         t.Fatal(err)
     }
@@ -101,7 +101,7 @@ func TestOperationsPurchaseReadsPostgreSQL(t *testing.T) {
         t.Fatal(err)
     }
 
-    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, authentication, nil, nil, purchasing.NewOperationsHandler(database, logger))
+    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, nil, authentication, nil, nil, purchasing.NewOperationsHandler(database, logger), nil)
     if err != nil {
         t.Fatal(err)
     }

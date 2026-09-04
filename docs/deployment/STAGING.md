@@ -2,10 +2,10 @@
 
 ## Scope
 
-This is a provider-neutral deployment contract for the Go API and its
-PostgreSQL database. It does not provision a cloud account, DNS, certificate,
-Kubernetes resource, Terraform stack, secret manager, or object-storage
-bucket.
+This is a deployment contract for the Go API, its PostgreSQL database, and the
+single-instance private filesystem evidence MVP. It does not provision a cloud
+account, DNS, certificate, Kubernetes resource, Terraform stack, secret
+manager, or storage volume.
 
 ## Required configuration
 
@@ -30,8 +30,13 @@ The long-running API requires:
 - optional comma-separated `TRUSTED_PROXY_CIDRS` containing only exact,
   non-global CIDRs for the reverse proxies that are permitted to supply
   forwarded client IPs; leave it empty to use the direct peer IP;
-- private evidence object-storage credentials and bucket/container names,
-  supplied only to the future evidence adapter.
+- `EVIDENCE_STORAGE_ROOT` for an existing absolute, non-root, non-symlink,
+  owner-private directory outside the checkout and served web roots; leave it
+  empty to disable only evidence upload/download;
+- `EVIDENCE_STORAGE_MODE=single-instance` and `API_REPLICA_COUNT=1` whenever
+  evidence storage is configured. These values are explicit outside
+  development/test; invalid values or an unsafe/unavailable root fail API
+  startup.
 
 Secret values are injected by the deployment environment. They are never
 committed to source control, copied into image layers, logged, or returned by
@@ -51,16 +56,23 @@ it unset. It refuses to start in staging or production when that value is true.
 - Allow credentialed Operations requests only from the configured exact origins.
 - Use separate least-privilege database roles for the migration job and API.
 - Keep payment evidence private; do not grant public object URLs or bucket
-  listing permissions.
-- Restrict database and object credentials to the staging environment and
-  rotate them through the deployment secret mechanism.
+  listing permissions. Mount the evidence volume only into its one API process;
+  it uses an owner-private root, `0700` directories, and `0600` files.
+- Restrict database credentials and the private evidence volume to staging.
+  The API never logs or returns evidence references, digests, paths, bytes, or
+  credentials. Operations evidence download is API-mediated and requires an
+  Operations session plus `payment.verify`; Storefront has no storage URL.
+- Storefront evidence submission CORS is exact-origin and non-credentialed,
+  with `Authorization` allowed only when that route is registered.
 
 ## Deployment order
 
 1. Build and publish an immutable API artifact.
 2. Run the migration job with the migration role.
 3. Run reference seeds with the same controlled job.
-4. Deploy the API with the application role and the required configuration.
+4. Provision the persistent private evidence volume, verify its ownership and
+   root safety, and deploy exactly one API replica with the application role
+   and required configuration.
 5. Verify `GET /health`, then PostgreSQL-backed `GET /ready`.
 
 Migration failure stops deployment. API startup never runs migrations.
@@ -83,5 +95,8 @@ external-provider deployment.
 ## Deferred
 
 Backup/restore drills, monitoring, alerting, TLS provisioning, evidence
-retention, domains, provider selection, and production rollout are separate
-work.
+retention (including hold and deletion authority), domains, object-provider
+adoption for multi-replica deployment, and production rollout are separate
+work. The root lease and `API_REPLICA_COUNT` fail closed for declared or
+same-volume concurrency but cannot prove a dishonest separate-volume topology;
+deployment owns that enforcement and the backup/restore posture.

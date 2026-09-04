@@ -2,15 +2,51 @@ package payment
 
 import (
     "bytes"
+    "context"
     "errors"
+    "fmt"
+    "io"
     "mime/multipart"
     "net/http"
     "net/http/httptest"
     "net/textproto"
+    "os"
+    "sync"
     "testing"
 
+    "github.com/Kangditya/persona-apps/apps/api/internal/platform/database"
+    "github.com/Kangditya/persona-apps/apps/api/internal/platform/idempotency"
     "github.com/gin-gonic/gin"
 )
+
+type cleanupStore struct {
+    mutex   sync.Mutex
+    deleted []string
+}
+
+func (store *cleanupStore) Put(context.Context, EvidenceObject) (StoredEvidence, error) {
+    return StoredEvidence{}, ErrStorageUnavailable
+}
+func (store *cleanupStore) Open(context.Context, string) (io.ReadCloser, error) {
+    return nil, ErrEvidenceNotFound
+}
+func (store *cleanupStore) Delete(_ context.Context, reference string) error {
+    store.mutex.Lock()
+    defer store.mutex.Unlock()
+    store.deleted = append(store.deleted, reference)
+    return nil
+}
+
+func TestCleanupOwnershipPreservesUncertainAndCollision(t *testing.T) {
+    store := &cleanupStore{}
+    handler := NewPublicHandler(nil, idempotency.Cipher{}, nil, store)
+    handler.cleanupAfterSubmission(context.Background(), true, "new", errors.New("definite"))
+    handler.cleanupAfterSubmission(context.Background(), true, "uncertain", fmt.Errorf("%w: lost", database.ErrCommitUncertain))
+    handler.cleanupAfterSubmission(context.Background(), false, "existing", ErrStorageCollision)
+    if len(store.deleted) != 1 || store.deleted[0] != "new" {
+        t.Fatalf("cleanup = %#v", store.deleted)
+    }
+}
 
 func TestDecodePublicEvidenceNormalizesAndHashesTrustedContent(t *testing.T) {
     gin.SetMode(gin.TestMode)
@@ -34,6 +70,10 @@ func TestDecodePublicEvidenceNormalizesAndHashesTrustedContent(t *testing.T) {
         if err != nil {
             t.Fatal(err)
         }
+        defer closeSpool(value.Spool)
+        if _, statErr := os.Stat(value.Spool.Name()); !errors.Is(statErr, os.ErrNotExist) {
+            t.Fatalf("spool remained linked: %v", statErr)
+        }
         if value.AmountMinor != 125000 || value.CurrencyCode != "IDR" || value.MediaType != test.mediaType || len(value.SHA256) != 32 {
             t.Fatalf("evidence = %#v", value)
         }
@@ -49,8 +89,9 @@ func TestDecodePublicEvidenceAcceptsExactSizeLimit(t *testing.T) {
     context, _ := gin.CreateTestContext(httptest.NewRecorder())
     context.Request = request
     value, err := decodePublicEvidence(context)
-    if err != nil || int64(len(value.Data)) != MaxEvidenceBytes {
-        t.Fatalf("size/error = %d/%v", len(value.Data), err)
+    defer closeSpool(value.Spool)
+    if err != nil || value.SizeBytes != MaxEvidenceBytes {
+        t.Fatalf("size/error = %d/%v", value.SizeBytes, err)
     }
 }
 

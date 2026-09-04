@@ -2,7 +2,9 @@ package payment
 
 import (
     "context"
+    "crypto/rand"
     "encoding/base32"
+    "encoding/base64"
     "errors"
     "fmt"
     "io"
@@ -12,11 +14,12 @@ import (
 )
 
 const (
-    MaxEvidenceBytes             = int64(10 << 20)
-    MaxEvidenceFilename          = 255
-    referenceEntropyBytes        = 16
-    MethodManualTransfer         = "MANUAL_TRANSFER"
-    StatusSubmitted       Status = "SUBMITTED"
+    MaxEvidenceBytes               = int64(10 << 20)
+    MaxEvidenceFilename            = 255
+    referenceEntropyBytes          = 16
+    evidenceKeyEntropyBytes        = 32
+    MethodManualTransfer           = "MANUAL_TRANSFER"
+    StatusSubmitted         Status = "SUBMITTED"
 )
 
 var (
@@ -25,6 +28,8 @@ var (
     ErrEvidenceTooLarge   = errors.New("payment evidence is too large")
     ErrUnsupportedMedia   = errors.New("unsupported payment evidence media type")
     ErrStorageUnavailable = errors.New("payment evidence storage unavailable")
+    ErrEvidenceNotFound   = errors.New("payment evidence not found")
+    ErrStorageCollision   = errors.New("payment evidence storage collision")
 )
 
 type Status string
@@ -38,14 +43,21 @@ type Evidence struct {
 }
 
 type EvidenceObject struct {
+    Reference string
     MediaType string
     SizeBytes int64
     SHA256    []byte
     Body      io.Reader
 }
 
+type StoredEvidence struct {
+    Reference string
+    SizeBytes int64
+}
+
 type EvidenceStore interface {
-    Put(context.Context, EvidenceObject) (string, error)
+    Put(context.Context, EvidenceObject) (StoredEvidence, error)
+    Open(context.Context, string) (io.ReadCloser, error)
     Delete(context.Context, string) error
 }
 
@@ -103,6 +115,15 @@ func NewReference(random io.Reader) (string, error) {
         return "", fmt.Errorf("generate payment reference: %w", err)
     }
     return "PAY-" + base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(entropy), nil
+}
+
+// NewEvidenceReference creates a flat, opaque, caller-owned storage identity.
+func NewEvidenceReference() (string, error) {
+    entropy := make([]byte, evidenceKeyEntropyBytes)
+    if _, err := io.ReadFull(rand.Reader, entropy); err != nil {
+        return "", fmt.Errorf("generate evidence reference: %w", err)
+    }
+    return base64.RawURLEncoding.EncodeToString(entropy), nil
 }
 
 func validateSubmission(value Payment) error {

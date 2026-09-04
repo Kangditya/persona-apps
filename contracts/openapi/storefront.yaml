@@ -263,7 +263,8 @@ paths:
       summary: Submit payment evidence for a purchase
       description: |
         The declared amount and currency must equal the outstanding amount. The
-        file is private evidence; API responses never disclose its storage reference.
+        file is private evidence stored only when the server has configured private
+        storage; API responses never disclose its storage reference.
       security:
         - PurchaseBearer: []
       x-idempotency:

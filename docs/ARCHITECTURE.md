@@ -802,10 +802,17 @@ Examples:
 - `BankReconciliation`
 - `MessageSender`
 - `EmailSender`
-- `ObjectStorage`
+- `EvidenceStore`
 - `DocumentRenderer`
 
 Provider payloads must not become domain models.
+
+Payment evidence uses ADR-057's narrow `EvidenceStore` port. Its MVP adapter
+is a Go-standard-library private filesystem with opaque references and no
+public URL, ACL, listing, or PostgreSQL bytes. It is deliberately
+single-instance: one API process owns an existing private persistent volume;
+multi-replica or provider adoption needs a new deployment decision while
+preserving this port.
 
 Webhook handlers must:
 
@@ -983,7 +990,7 @@ A practical first deployment may contain:
 - Go API container;
 - Go worker container;
 - PostgreSQL;
-- object storage;
+- one API-private persistent evidence volume for the single-instance MVP;
 - reverse proxy or managed ingress.
 
 ```text
@@ -1014,6 +1021,13 @@ the applications are no longer static-only deployments.
 - production.
 
 Each environment must have isolated databases and secrets.
+
+For the evidence capability, staging and production additionally mount the
+owner-private volume only into the single API process. Deployment declares and
+enforces the one-replica topology and owns backup/restore; the API's root lease
+and declared replica count cannot prove a dishonest separate-volume topology.
+The filesystem root remains outside source and served web roots. Private
+Operations retrieval is API-mediated; Storefront has no storage URL.
 
 ---
 
@@ -1081,7 +1095,7 @@ Core purchasing, payment eligibility, quota, and allocation should remain transa
 
 ## 23. Architecture Decisions Required
 
-ADR-040 through ADR-050 and ADR-056 resolve the current platform, Common
+ADR-040 through ADR-050 and ADR-056 through ADR-057 resolve the current platform, Common
 Purchase, and Payment-submission baseline. ADR-051 through ADR-055 resolve Full Event-Day MVP duration, teams,
 attendance, distribution, realtime/mobile, and degraded-connectivity
 boundaries. Remaining decisions include:
@@ -1089,7 +1103,7 @@ boundaries. Remaining decisions include:
 1. Public identifier strategy.
 2. Money representation.
 3. API contract generation.
-4. Object storage provider.
+4. Object-provider adoption if a multi-replica evidence deployment is needed.
 5. Payment gateway integration.
 6. Audit data retention.
 7. Conditions for backend service extraction.

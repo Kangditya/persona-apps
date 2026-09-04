@@ -19,6 +19,7 @@ import (
     "github.com/Kangditya/persona-apps/apps/api/internal/config"
     "github.com/Kangditya/persona-apps/apps/api/internal/event"
     "github.com/Kangditya/persona-apps/apps/api/internal/offering"
+    "github.com/Kangditya/persona-apps/apps/api/internal/payment"
     platformdb "github.com/Kangditya/persona-apps/apps/api/internal/platform/database"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/idempotency"
     "github.com/gin-gonic/gin"
@@ -52,7 +53,7 @@ func TestOperationsCommandsPostgreSQL(t *testing.T) {
     }
     logger := slog.New(slog.NewTextHandler(io.Discard, nil))
     authentication := newTestAuthentication(t, database)
-    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, authentication, event.NewOperationsHandler(database, cipher, logger), offering.NewOperationsHandler(database, cipher, logger), nil)
+    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, nil, authentication, event.NewOperationsHandler(database, cipher, logger), offering.NewOperationsHandler(database, cipher, logger), nil, nil)
     if err != nil {
         t.Fatal(err)
     }
@@ -318,6 +319,145 @@ func responseStatus(t *testing.T, body []byte) string {
     t.Helper()
     value, _ := responseData(t, body)["status"].(string)
     return value
+}
+
+func TestOperationsPaymentEvidenceAuthorizationPostgreSQL(t *testing.T) {
+    gin.SetMode(gin.TestMode)
+    dsn := os.Getenv("TEST_DATABASE_URL")
+    if dsn == "" {
+        t.Skip("TEST_DATABASE_URL is required for PostgreSQL Operations evidence coverage")
+    }
+    database, err := platformdb.Open(dsn)
+    if err != nil {
+        t.Fatal(err)
+    }
+    t.Cleanup(func() { _ = database.Close() })
+    acquireOperationsIntegrationLock(t, database)
+    prefix := fmt.Sprintf("w4e%d", time.Now().UnixNano())
+    token := strings.Repeat("p", 43)
+    csrf := strings.Repeat("c", 43)
+    operatorID := insertOperationsSession(t, database, prefix, token, csrf)
+    var year int
+    if err := database.QueryRow(`SELECT candidate FROM generate_series(8000,8999) AS candidate WHERE NOT EXISTS (SELECT 1 FROM qurban_events WHERE event_year=candidate) LIMIT 1`).Scan(&year); err != nil {
+        t.Fatal(err)
+    }
+    var eventID, offeringID, partyID, purchaseID, paymentID string
+    if err := database.QueryRow(`INSERT INTO qurban_events(event_year,name,status,participant_quota) VALUES($1,$2,'ACTIVE',10) RETURNING id`, year, prefix).Scan(&eventID); err != nil {
+        t.Fatal(err)
+    }
+    if err := database.QueryRow(`INSERT INTO offerings(event_id,code,name,offering_kind,price_minor,currency_code,participant_capacity,participant_quota,status) VALUES($1,$2,'one','SHARE',100,'IDR',1,10,'PUBLISHED') RETURNING id`, eventID, prefix).Scan(&offeringID); err != nil {
+        t.Fatal(err)
+    }
+    if err := database.QueryRow(`INSERT INTO parties(party_type,display_name) VALUES('PERSON',$1) RETURNING id`, prefix).Scan(&partyID); err != nil {
+        t.Fatal(err)
+    }
+    hash := sha256.Sum256([]byte(strings.Repeat("x", 43)))
+    if err := database.QueryRow(`INSERT INTO purchases(event_id,purchase_ref,channel,purchaser_party_id,payer_party_id,offering_id,participant_count,offering_name_snapshot,offering_kind_snapshot,offering_unit_price_minor,participant_capacity_snapshot,total_amount_minor,currency_code,status,access_token_hash) VALUES($1,$2,'COMMON',$3,$3,$4,1,'one','SHARE',100,1,100,'IDR','PENDING_PAYMENT',$5) RETURNING id`, eventID, prefix, partyID, offeringID, hash[:]).Scan(&purchaseID); err != nil {
+        t.Fatal(err)
+    }
+    root := t.TempDir()
+    if err := os.Chmod(root, 0o700); err != nil {
+        t.Fatal(err)
+    }
+    store, err := payment.NewFilesystemStore(root)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer store.Close()
+    data := []byte("%PDF-1.4\nproof")
+    digest := sha256.Sum256(data)
+    reference, _ := payment.NewEvidenceReference()
+    if _, err := store.Put(context.Background(), payment.EvidenceObject{Reference: reference, MediaType: "application/pdf", SizeBytes: int64(len(data)), SHA256: digest[:], Body: bytes.NewReader(data)}); err != nil {
+        t.Fatal(err)
+    }
+    if err := database.QueryRow(`INSERT INTO payment_records(event_id,payment_ref,payer_party_id,purchase_id,amount_minor,currency_code,method,status,evidence_reference,evidence_filename,evidence_media_type,evidence_size_bytes,evidence_sha256,submitted_at) VALUES($1,$2,$3,$4,100,'IDR','MANUAL_TRANSFER','SUBMITTED',$5,'proof.pdf','application/pdf',$6,$7,now()) RETURNING id`, eventID, "PAY-AAAAAAAAAAAAAAAAAAAAAAAAAA", partyID, purchaseID, reference, len(data), digest[:]).Scan(&paymentID); err != nil {
+        t.Fatal(err)
+    }
+    data2 := []byte("%PDF-1.4\nother")
+    digest2 := sha256.Sum256(data2)
+    reference2, _ := payment.NewEvidenceReference()
+    if _, err := store.Put(context.Background(), payment.EvidenceObject{Reference: reference2, MediaType: "application/pdf", SizeBytes: int64(len(data2)), SHA256: digest2[:], Body: bytes.NewReader(data2)}); err != nil {
+        t.Fatal(err)
+    }
+    var purchaseID2, paymentID2 string
+    hash2 := sha256.Sum256([]byte(strings.Repeat("y", 43)))
+    if err := database.QueryRow(`INSERT INTO purchases(event_id,purchase_ref,channel,purchaser_party_id,payer_party_id,offering_id,participant_count,offering_name_snapshot,offering_kind_snapshot,offering_unit_price_minor,participant_capacity_snapshot,total_amount_minor,currency_code,status,access_token_hash) VALUES($1,$2,'COMMON',$3,$3,$4,1,'one','SHARE',100,1,100,'IDR','PENDING_PAYMENT',$5) RETURNING id`, eventID, prefix+"-two", partyID, offeringID, hash2[:]).Scan(&purchaseID2); err != nil {
+        t.Fatal(err)
+    }
+    if err := database.QueryRow(`INSERT INTO payment_records(event_id,payment_ref,payer_party_id,purchase_id,amount_minor,currency_code,method,status,evidence_reference,evidence_filename,evidence_media_type,evidence_size_bytes,evidence_sha256,submitted_at) VALUES($1,$2,$3,$4,100,'IDR','MANUAL_TRANSFER','SUBMITTED',$5,'proof2.pdf','application/pdf',$6,$7,now()) RETURNING id`, eventID, "PAY-BBBBBBBBBBBBBBBBBBBBBBBBBB", partyID, purchaseID2, reference2, len(data2), digest2[:]).Scan(&paymentID2); err != nil {
+        t.Fatal(err)
+    }
+    t.Cleanup(func() {
+        _, _ = database.Exec(`DELETE FROM payment_records WHERE id=$1`, paymentID)
+        _, _ = database.Exec(`DELETE FROM payment_records WHERE id=$1`, paymentID2)
+        _, _ = database.Exec(`DELETE FROM purchases WHERE id=$1`, purchaseID2)
+        _, _ = database.Exec(`DELETE FROM purchases WHERE id=$1`, purchaseID)
+        _, _ = database.Exec(`DELETE FROM parties WHERE id=$1`, partyID)
+        _, _ = database.Exec(`DELETE FROM offerings WHERE id=$1`, offeringID)
+        _, _ = database.Exec(`DELETE FROM qurban_events WHERE id=$1`, eventID)
+        _, _ = database.Exec(`DELETE FROM operator_sessions WHERE operator_user_id=$1`, operatorID)
+        _, _ = database.Exec(`DELETE FROM operator_users WHERE id=$1`, operatorID)
+    })
+    logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+    authn := newTestAuthentication(t, database)
+    server, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, nil, authn, nil, nil, nil, payment.NewOperationsHandler(database, store, logger))
+    if err != nil {
+        t.Fatal(err)
+    }
+    request := func(id string, withCookie bool) *httptest.ResponseRecorder {
+        r := httptest.NewRequest(http.MethodGet, "/api/operations/v1/payments/"+id+"/evidence", nil)
+        if withCookie {
+            r.AddCookie(&http.Cookie{Name: "__Host-operations_session", Value: token})
+        }
+        w := httptest.NewRecorder()
+        server.Handler.ServeHTTP(w, r)
+        return w
+    }
+    if got := request(paymentID, false); got.Code != http.StatusUnauthorized {
+        t.Fatalf("unauth=%d", got.Code)
+    }
+    if _, err := database.Exec(`UPDATE operator_sessions SET permission_snapshot='["payment.read"]'::jsonb WHERE operator_user_id=$1`, operatorID); err != nil {
+        t.Fatal(err)
+    }
+    if got := request(paymentID, true); got.Code != http.StatusForbidden {
+        t.Fatalf("read=%d", got.Code)
+    }
+    if _, err := database.Exec(`UPDATE operator_sessions SET permission_snapshot='["payment.verify"]'::jsonb WHERE operator_user_id=$1`, operatorID); err != nil {
+        t.Fatal(err)
+    }
+    got := request(paymentID, true)
+    if got.Code != http.StatusOK || !bytes.Equal(got.Body.Bytes(), data) || got.Header().Get("Cache-Control") != "no-store" || got.Header().Get("X-Content-Type-Options") != "nosniff" || got.Header().Get("Content-Type") != "application/pdf" || got.Header().Get("Content-Length") != fmt.Sprintf("%d", len(data)) || strings.Contains(got.Body.String(), reference) {
+        t.Fatal("verified evidence response exposed or mismatched data")
+    }
+    if other := request(paymentID2, true); other.Code != http.StatusOK || !bytes.Equal(other.Body.Bytes(), data2) || bytes.Equal(other.Body.Bytes(), data) {
+        t.Fatal("payment reference isolation failed")
+    }
+    missing := httptest.NewRecorder()
+    req := httptest.NewRequest(http.MethodGet, "/api/operations/v1/payments/11111111-1111-1111-1111-111111111111/evidence", nil)
+    req.AddCookie(&http.Cookie{Name: "__Host-operations_session", Value: token})
+    server.Handler.ServeHTTP(missing, req)
+    if missing.Code != http.StatusNotFound || strings.Contains(missing.Body.String(), reference) {
+        t.Fatal("missing payment response exposed metadata")
+    }
+    if err := store.Close(); err != nil {
+        t.Fatal("store restart close failed")
+    }
+    reopened, err := payment.NewFilesystemStore(root)
+    if err != nil {
+        t.Fatal("store restart open failed")
+    }
+    defer reopened.Close()
+    restarted, err := NewServer(":0", database, logger, config.PublicConfig{RateLimitPerMinute: 60, RateLimitBurst: 20}, nil, nil, authn, nil, nil, nil, payment.NewOperationsHandler(database, reopened, logger))
+    if err != nil {
+        t.Fatal("restart server creation failed")
+    }
+    restartRequest := httptest.NewRequest(http.MethodGet, "/api/operations/v1/payments/"+paymentID+"/evidence", nil)
+    restartRequest.AddCookie(&http.Cookie{Name: "__Host-operations_session", Value: token})
+    restartResponse := httptest.NewRecorder()
+    restarted.Handler.ServeHTTP(restartResponse, restartRequest)
+    if restartResponse.Code != http.StatusOK || !bytes.Equal(restartResponse.Body.Bytes(), data) || restartResponse.Header().Get("Cache-Control") != "no-store" {
+        t.Fatal("restart retrieval failed")
+    }
 }
 
 func insertOperationsSession(t *testing.T, database *sql.DB, prefix, token, csrf string) string {

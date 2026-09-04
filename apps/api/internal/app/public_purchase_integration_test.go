@@ -60,7 +60,7 @@ func TestPublicCommonPurchaseCheckoutPostgreSQL(t *testing.T) {
     const origin = "https://storefront.example.test"
     server, err := NewServer(":0", database, logger, config.PublicConfig{
         RateLimitPerMinute: 600, RateLimitBurst: 100, StorefrontAllowedOrigins: map[string]struct{}{origin: {}},
-    }, purchasing.NewPublicHandler(database, cipher, logger), nil, nil, nil, nil)
+    }, purchasing.NewPublicHandler(database, cipher, logger), nil, nil, nil, nil, nil, nil)
     if err != nil {
         t.Fatal(err)
     }

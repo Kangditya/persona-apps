@@ -9,6 +9,7 @@ import (
     "github.com/Kangditya/persona-apps/apps/api/internal/config"
     "github.com/Kangditya/persona-apps/apps/api/internal/event"
     "github.com/Kangditya/persona-apps/apps/api/internal/offering"
+    "github.com/Kangditya/persona-apps/apps/api/internal/payment"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/auth"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/httpx"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/ratelimit"
@@ -21,7 +22,7 @@ const (
     operationsAPIPrefix = "/api/operations/v1"
 )
 
-func newRouter(database readinessChecker, logger *slog.Logger, public config.PublicConfig, publicPurchases *purchasing.PublicHandler, operationsAuth *auth.Service, events event.ActiveReader, offerings offering.PublicCatalogueReader, eventOperations *event.OperationsHandler, offeringOperations *offering.OperationsHandler, purchaseOperations *purchasing.OperationsHandler) (*gin.Engine, error) {
+func newRouter(database readinessChecker, logger *slog.Logger, public config.PublicConfig, publicPurchases *purchasing.PublicHandler, publicPayments *payment.PublicHandler, operationsAuth *auth.Service, events event.ActiveReader, offerings offering.PublicCatalogueReader, eventOperations *event.OperationsHandler, offeringOperations *offering.OperationsHandler, purchaseOperations *purchasing.OperationsHandler, paymentOperations *payment.OperationsHandler) (*gin.Engine, error) {
     router := gin.New()
     router.RedirectTrailingSlash = false
     router.RedirectFixedPath = false
@@ -50,8 +51,8 @@ func newRouter(database readinessChecker, logger *slog.Logger, public config.Pub
     router.Use(httpx.RequestIDMiddleware(logger), httpx.RecoveryMiddleware(logger), operationsNoStore())
 
     registerHealthRoutes(router, database, logger)
-    registerPublicRoutes(router, events, offerings, publicPurchases, limiter, logger, public.StorefrontAllowedOrigins)
-    registerOperationsRoutes(router, operationsAuth, eventOperations, offeringOperations, purchaseOperations)
+    registerPublicRoutes(router, events, offerings, publicPurchases, publicPayments, limiter, logger, public.StorefrontAllowedOrigins)
+    registerOperationsRoutes(router, operationsAuth, eventOperations, offeringOperations, purchaseOperations, paymentOperations)
 
     return router, nil
 }

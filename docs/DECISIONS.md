@@ -1818,3 +1818,74 @@ Purchase becomes eligible without Payment is a separate product decision.
 - The W4-01 handler remains unwired in production until that adapter exists.
 - No payment gateway, partial payment, refund, zero-price eligibility, token
   recovery, or evidence-retention policy is introduced by this decision.
+
+---
+
+## ADR-057: Use a single-instance private filesystem EvidenceStore for the MVP
+
+**Status:** Accepted
+
+### Context
+
+ADR-056 deliberately leaves its evidence-storage port unwired. Evidence is
+private, immutable payment support material; PostgreSQL stores its opaque
+reference and verified metadata, never bytes. The MVP needs a durable adapter
+without adding an SDK, provider, public URL, ACL, listing, or second service.
+
+### Decision
+
+Use one Go-standard-library private filesystem `EvidenceStore` behind the
+narrow W4-01 port. An empty `EVIDENCE_STORAGE_ROOT` disables only evidence
+upload and download. When configured, startup requires
+`EVIDENCE_STORAGE_ROOT`, `EVIDENCE_STORAGE_MODE=single-instance`, and
+`API_REPLICA_COUNT=1`; replica count is explicit outside development/test.
+Invalid values or an unsafe/unavailable root fail API startup.
+
+The root is an existing absolute, non-root, non-symlink, owner-private
+directory outside the Git checkout and served web roots. The adapter holds a
+nonblocking lifetime root lease and is run by exactly one API process on a
+persistent private volume in staging/production. The root lease and declared
+replica count fail closed for declared or same-volume concurrency, but cannot
+prove a dishonest separate-volume topology; deployment owns enforcement,
+backup, and restore. More than one API instance requires a separately approved
+object-provider adapter behind this same port.
+
+References are flat, opaque, 256-bit random values. The adapter confines work
+with `os.Root`, creates `0700` subdirectories and `0600` files, streams bounded
+content while verifying SHA-256, size, and trusted MIME, syncs and closes a
+staging file, publishes by atomic create-only hard link, then syncs the
+objects directory before success. Startup performs a capability probe.
+
+Purchase authorization occurs before multipart spooling or replay lookup, and
+only the winning idempotency callback calls `Put`. A definite rollback or
+panic after a successful `Put` starts a bounded detached best-effort delete.
+`database.ErrCommitUncertain` preserves the object for reconciliation and wraps
+the original commit cause. A collision never deletes the existing object.
+
+Startup and hourly sweeps serialize with the single process. They use a
+24-hour grace only for unreferenced objects and staging files, keep submission
+lifetime below that grace, query PostgreSQL for the exact reference immediately
+before final deletion, and abort a pass on query error. Referenced evidence is
+never age-deleted: product/compliance still owns its retention, hold, and
+deletion policy.
+
+`GET /api/operations/v1/payments/{payment_id}/evidence` requires an Operations
+session and `payment.verify`. It returns an attachment with `no-store`,
+`nosniff`, trusted media type, and length; it never exposes or logs a provider
+reference, digest, path, bytes, or credentials. Storefront submission CORS is
+exact-origin and non-credentialed, and includes `Authorization` only when that
+route is registered.
+
+No schema migration is required now: existing Payment metadata represents an
+opaque reference made unique by create-only publication. Any multi-replica or
+provider migration remains behind this port and requires a new deployment
+decision.
+
+### Consequences
+
+- The Go modular monolith remains authoritative for authorization, storage
+  ordering, retrieval, and cleanup.
+- Staging/production must provision and protect the one persistent private
+  volume; this decision does not provide its topology, backups, or restore.
+- No evidence retention duration, public storage URL, PostgreSQL evidence
+  bytes, storage dependency, or provider is introduced.

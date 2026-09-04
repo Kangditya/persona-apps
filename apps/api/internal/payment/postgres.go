@@ -50,6 +50,29 @@ VALUES ($1, NULL, $2, $3)`, created.ID, StatusSubmitted, created.SubmittedAt); e
     return created, nil
 }
 
+// GetEvidence returns only the database-owned evidence metadata for private retrieval.
+func (repository *Repository) GetEvidence(ctx context.Context, paymentID string) (Evidence, error) {
+    var evidence Evidence
+    err := repository.database.QueryRowContext(ctx, `
+SELECT evidence_reference, evidence_filename, evidence_media_type, evidence_size_bytes, evidence_sha256
+FROM payment_records WHERE id = $1 AND evidence_reference IS NOT NULL`, paymentID).Scan(&evidence.Reference, &evidence.Filename, &evidence.MediaType, &evidence.SizeBytes, &evidence.SHA256)
+    if errors.Is(err, sql.ErrNoRows) {
+        return Evidence{}, ErrEvidenceNotFound
+    }
+    if err != nil {
+        return Evidence{}, fmt.Errorf("get payment evidence: %w", translateError(err))
+    }
+    return evidence, nil
+}
+
+func (repository *Repository) ReferenceExists(ctx context.Context, reference string) (bool, error) {
+    var found bool
+    if err := repository.database.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM payment_records WHERE evidence_reference = $1)`, reference).Scan(&found); err != nil {
+        return false, fmt.Errorf("check payment evidence reference: %w", err)
+    }
+    return found, nil
+}
+
 func scanPayment(value scanner) (Payment, error) {
     var payment Payment
     var status string

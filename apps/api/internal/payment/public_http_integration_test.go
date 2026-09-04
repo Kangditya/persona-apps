@@ -13,6 +13,7 @@ import (
     "net/http"
     "net/http/httptest"
     "os"
+    "path/filepath"
     "strings"
     "sync"
     "testing"
@@ -24,31 +25,45 @@ import (
 )
 
 type memoryEvidenceStore struct {
-    mutex   sync.Mutex
-    objects map[string][]byte
-    puts    int
-    deletes int
-    putErr  error
+    mutex           sync.Mutex
+    objects         map[string][]byte
+    puts            int
+    deletes         int
+    putErr          error
+    returnReference string
 }
 
-func (store *memoryEvidenceStore) Put(_ context.Context, object EvidenceObject) (string, error) {
+func (store *memoryEvidenceStore) Put(_ context.Context, object EvidenceObject) (StoredEvidence, error) {
     store.mutex.Lock()
     defer store.mutex.Unlock()
     if store.putErr != nil {
-        return "", store.putErr
+        return StoredEvidence{}, store.putErr
     }
     body, err := io.ReadAll(object.Body)
     if err != nil {
-        return "", err
+        return StoredEvidence{}, err
     }
     digest := sha256.Sum256(body)
     if int64(len(body)) != object.SizeBytes || !bytes.Equal(digest[:], object.SHA256) {
-        return "", fmt.Errorf("invalid evidence object")
+        return StoredEvidence{}, fmt.Errorf("invalid evidence object")
     }
     store.puts++
-    reference := fmt.Sprintf("evidence/%d", store.puts)
+    reference := object.Reference
     store.objects[reference] = append([]byte(nil), body...)
-    return reference, nil
+    if store.returnReference != "" {
+        reference = store.returnReference
+    }
+    return StoredEvidence{Reference: reference, SizeBytes: int64(len(body))}, nil
+}
+
+func (store *memoryEvidenceStore) Open(_ context.Context, reference string) (io.ReadCloser, error) {
+    store.mutex.Lock()
+    defer store.mutex.Unlock()
+    value, found := store.objects[reference]
+    if !found {
+        return nil, ErrEvidenceNotFound
+    }
+    return io.NopCloser(bytes.NewReader(value)), nil
 }
 
 func (store *memoryEvidenceStore) Delete(_ context.Context, reference string) error {
@@ -145,7 +160,7 @@ func TestPublicEvidenceSubmissionPostgreSQLReplayAndDuplicateGuard(t *testing.T)
         t.Fatal(err)
     }
     expectedDigest := sha256.Sum256(evidence)
-    if payments != 1 || history != 1 || outboxRows != 1 || replayRows != 1 || expiresAt.Valid || evidenceReference != "evidence/1" || filename != "proof.jpg" || mediaType != "image/jpeg" || size != int64(len(evidence)) || !bytes.Equal(digest, expectedDigest[:]) {
+    if payments != 1 || history != 1 || outboxRows != 1 || replayRows != 1 || expiresAt.Valid || len(evidenceReference) != 43 || filename != "proof.jpg" || mediaType != "image/jpeg" || size != int64(len(evidence)) || !bytes.Equal(digest, expectedDigest[:]) {
         t.Fatalf("stored effects = payments:%d history:%d outbox:%d replay:%d expiry:%v reference:%q filename:%q media:%q size:%d digest:%x", payments, history, outboxRows, replayRows, expiresAt, evidenceReference, filename, mediaType, size, digest)
     }
     var payload string
@@ -430,6 +445,130 @@ type paymentFixture struct {
     partyID    string
     purchaseID string
     token      string
+}
+
+func TestPublicEvidenceFilesystemStoreLifecyclePostgreSQL(t *testing.T) {
+    gin.SetMode(gin.TestMode)
+    database := paymentIntegrationDatabase(t)
+    ctx := context.Background()
+    acquirePaymentIntegrationLock(t, ctx, database)
+    fixture := createPaymentFixture(t, ctx, database, "payment-filesystem", time.Now().UTC().Truncate(time.Microsecond))
+    t.Cleanup(func() { cleanupPaymentFixture(t, ctx, database, fixture) })
+    root := t.TempDir()
+    if err := os.Chmod(root, 0o700); err != nil {
+        t.Fatal(err)
+    }
+    store, err := NewFilesystemStore(root)
+    if err != nil {
+        t.Fatal(err)
+    }
+    cipher, err := idempotency.NewCipher([]idempotency.Key{{ID: "payment-filesystem", Value: make([]byte, 32)}})
+    if err != nil {
+        t.Fatal(err)
+    }
+    handler := NewPublicHandler(database, cipher, slog.New(slog.NewTextHandler(io.Discard, nil)), store)
+    router := gin.New()
+    handler.RegisterRoutes(router.Group(""))
+    evidence := []byte{0xff, 0xd8, 0xff, 0x00, 0x01}
+    first := submitEvidence(t, router, fixture, "filesystem-intent", fixture.token, evidence)
+    if first.Code != http.StatusCreated {
+        t.Fatal("filesystem upload failed")
+    }
+    replay := submitEvidence(t, router, fixture, "filesystem-intent", fixture.token, evidence)
+    if replay.Code != http.StatusCreated || replay.Body.String() != first.Body.String() {
+        t.Fatal("filesystem replay failed")
+    }
+    var reference string
+    var size int64
+    var digest []byte
+    if err := database.QueryRowContext(ctx, `SELECT evidence_reference,evidence_size_bytes,evidence_sha256 FROM payment_records WHERE purchase_id=$1`, fixture.purchaseID).Scan(&reference, &size, &digest); err != nil {
+        t.Fatal(err)
+    }
+    entries, err := os.ReadDir(filepath.Join(root, "objects"))
+    if err != nil || len(entries) != 1 || entries[0].Name() != reference {
+        t.Fatal("filesystem object count/reference mismatch")
+    }
+    file, err := store.Open(ctx, reference)
+    if err != nil {
+        t.Fatal(err)
+    }
+    got, _ := io.ReadAll(file)
+    _ = file.Close()
+    expected := sha256.Sum256(evidence)
+    if !bytes.Equal(got, evidence) || size != int64(len(evidence)) || !bytes.Equal(digest, expected[:]) {
+        t.Fatal("stored bytes or metadata mismatch")
+    }
+    conflict := submitEvidence(t, router, fixture, "filesystem-other", fixture.token, evidence)
+    if conflict.Code != http.StatusConflict {
+        t.Fatal("filesystem conflict failed")
+    }
+    entries, err = os.ReadDir(filepath.Join(root, "objects"))
+    if err != nil || len(entries) != 1 || entries[0].Name() != reference {
+        t.Fatal("filesystem conflict cleanup mismatch")
+    }
+    if err := store.Close(); err != nil {
+        t.Fatal(err)
+    }
+    reopened, err := NewFilesystemStore(root)
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer reopened.Close()
+    file, err = reopened.Open(ctx, reference)
+    if err != nil {
+        t.Fatal(err)
+    }
+    got, _ = io.ReadAll(file)
+    _ = file.Close()
+    if !bytes.Equal(got, evidence) {
+        t.Fatal("restart bytes mismatch")
+    }
+}
+
+type panicRandomReader struct{}
+
+func (panicRandomReader) Read([]byte) (int, error) { panic("post-put panic") }
+
+func TestPublicEvidenceCleanupPanicAndMismatchedStorePostgreSQL(t *testing.T) {
+    gin.SetMode(gin.TestMode)
+    db := paymentIntegrationDatabase(t)
+    ctx := context.Background()
+    acquirePaymentIntegrationLock(t, ctx, db)
+    cipher, _ := idempotency.NewCipher([]idempotency.Key{{ID: "cleanup", Value: make([]byte, 32)}})
+    evidence := []byte{0xff, 0xd8, 0xff, 0}
+    panicFixture := createPaymentFixture(t, ctx, db, fmt.Sprintf("payment-panic-%d", time.Now().UnixNano()), time.Now())
+    t.Cleanup(func() { cleanupPaymentFixture(t, ctx, db, panicFixture) })
+    panicStore := &memoryEvidenceStore{objects: map[string][]byte{}}
+    panicHandler := NewPublicHandler(db, cipher, slog.New(slog.NewTextHandler(io.Discard, nil)), panicStore)
+    panicHandler.random = panicRandomReader{}
+    router := gin.New()
+    panicHandler.RegisterRoutes(router.Group(""))
+    func() {
+        defer func() {
+            if recover() != "post-put panic" {
+                t.Fatal("panic not propagated")
+            }
+        }()
+        _ = submitEvidence(t, router, panicFixture, "panic-key", panicFixture.token, evidence)
+    }()
+    if panicStore.deletes != 1 || len(panicStore.objects) != 0 {
+        t.Fatalf("panic cleanup=%d/%d", panicStore.deletes, len(panicStore.objects))
+    }
+    var count int
+    if err := db.QueryRow(`SELECT count(*) FROM payment_records WHERE purchase_id=$1`, panicFixture.purchaseID).Scan(&count); err != nil || count != 0 {
+        t.Fatalf("panic rows=%d/%v", count, err)
+    }
+    cleanupPaymentFixture(t, ctx, db, panicFixture)
+    mismatchFixture := createPaymentFixture(t, ctx, db, fmt.Sprintf("payment-mismatch-%d", time.Now().UnixNano()), time.Now())
+    t.Cleanup(func() { cleanupPaymentFixture(t, ctx, db, mismatchFixture) })
+    mismatchStore := &memoryEvidenceStore{objects: map[string][]byte{}, returnReference: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
+    mismatchHandler := NewPublicHandler(db, cipher, slog.New(slog.NewTextHandler(io.Discard, nil)), mismatchStore)
+    router = gin.New()
+    mismatchHandler.RegisterRoutes(router.Group(""))
+    response := submitEvidence(t, router, mismatchFixture, "mismatch-key", mismatchFixture.token, evidence)
+    if response.Code != http.StatusServiceUnavailable || mismatchStore.deletes != 1 || len(mismatchStore.objects) != 0 {
+        t.Fatalf("mismatch=%d deletes=%d objects=%d", response.Code, mismatchStore.deletes, len(mismatchStore.objects))
+    }
 }
 
 func createPaymentFixture(t *testing.T, ctx context.Context, database *sql.DB, prefix string, now time.Time) paymentFixture {

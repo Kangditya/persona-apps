@@ -32,9 +32,12 @@ type Config struct {
 
 type APIConfig struct {
     Config
-    Auth   *AuthConfig
-    Public PublicConfig
+    Auth     *AuthConfig
+    Public   PublicConfig
+    Evidence *EvidenceConfig
 }
+
+type EvidenceConfig struct{ Root string }
 
 type PublicConfig struct {
     RateLimitPerMinute       int
@@ -102,7 +105,35 @@ func LoadAPI() (APIConfig, error) {
     if err != nil {
         return APIConfig{}, err
     }
-    return APIConfig{Config: base, Auth: auth, Public: public}, nil
+    evidence, err := loadEvidence(base.Environment)
+    if err != nil {
+        return APIConfig{}, err
+    }
+    return APIConfig{Config: base, Auth: auth, Public: public, Evidence: evidence}, nil
+}
+
+func loadEvidence(environment Environment) (*EvidenceConfig, error) {
+    root, mode, replicas := strings.TrimSpace(os.Getenv("EVIDENCE_STORAGE_ROOT")), strings.TrimSpace(os.Getenv("EVIDENCE_STORAGE_MODE")), strings.TrimSpace(os.Getenv("API_REPLICA_COUNT"))
+    if root == "" {
+        if mode != "" || replicas != "" {
+            return nil, errors.New("EVIDENCE_STORAGE_ROOT is required when evidence storage is configured")
+        }
+        return nil, nil
+    }
+    if mode != "single-instance" {
+        return nil, errors.New("EVIDENCE_STORAGE_MODE must be single-instance")
+    }
+    if replicas == "" {
+        if environment == Staging || environment == Production {
+            return nil, errors.New("API_REPLICA_COUNT is required when evidence storage is enabled outside development and test")
+        }
+        return &EvidenceConfig{Root: root}, nil
+    }
+    count, err := strconv.Atoi(replicas)
+    if err != nil || count != 1 {
+        return nil, errors.New("API_REPLICA_COUNT must equal 1 when evidence storage is enabled")
+    }
+    return &EvidenceConfig{Root: root}, nil
 }
 
 func loadPublic(environment Environment) (PublicConfig, error) {

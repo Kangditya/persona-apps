@@ -1,7 +1,6 @@
 package payment
 
 import (
-    "bytes"
     "context"
     "crypto/rand"
     "crypto/sha256"
@@ -15,12 +14,14 @@ import (
     "mime"
     "mime/multipart"
     "net/http"
+    "os"
     "path"
     "strconv"
     "strings"
     "time"
     "unicode/utf8"
 
+    "github.com/Kangditya/persona-apps/apps/api/internal/platform/database"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/httpx"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/idempotency"
     "github.com/Kangditya/persona-apps/apps/api/internal/platform/outbox"
@@ -44,7 +45,8 @@ type publicEvidenceRequest struct {
     CurrencyCode string
     Filename     string
     MediaType    string
-    Data         []byte
+    Spool        *os.File
+    SizeBytes    int64
     SHA256       []byte
 }
 
@@ -99,7 +101,7 @@ func (handler *PublicHandler) submit(c *gin.Context) {
         writePublicPaymentError(c, handler.logger, err)
         return
     }
-    defer clear(request.Data)
+    defer closeSpool(request.Spool)
     defer clear(request.SHA256)
     requestHash, err := idempotency.RequestHash(struct {
         PurchaseID   string `json:"purchase_id"`
@@ -111,7 +113,7 @@ func (handler *PublicHandler) submit(c *gin.Context) {
         SHA256       string `json:"sha256"`
     }{
         PurchaseID: purchaseID, AmountMinor: request.AmountMinor, CurrencyCode: request.CurrencyCode,
-        Filename: request.Filename, MediaType: request.MediaType, SizeBytes: int64(len(request.Data)),
+        Filename: request.Filename, MediaType: request.MediaType, SizeBytes: request.SizeBytes,
         SHA256: base64.RawURLEncoding.EncodeToString(request.SHA256),
     })
     if err != nil {
@@ -122,28 +124,46 @@ func (handler *PublicHandler) submit(c *gin.Context) {
     command := idempotency.Command{Namespace: namespace, Key: key, RequestHash: requestHash, Retention: 0}
     occurredAt := handler.clock()
 
-    response, _, err := idempotency.Execute(c.Request.Context(), handler.database, handler.cipher, command, func(transaction *sql.Tx) (idempotency.Response, error) {
-        source, prepareErr := purchasing.PreparePaymentSubmission(c.Request.Context(), transaction, purchaseID, occurredAt)
+    submissionContext, cancel := context.WithTimeout(c.Request.Context(), 2*time.Minute)
+    defer cancel()
+    var storedReference string
+    armed := false
+    defer func() {
+        if recovered := recover(); recovered != nil {
+            if armed {
+                handler.cleanupEvidence(c.Request.Context(), storedReference)
+            }
+            panic(recovered)
+        }
+        handler.cleanupAfterSubmission(c.Request.Context(), armed, storedReference, err)
+    }()
+    response, _, err := idempotency.Execute(submissionContext, handler.database, handler.cipher, command, func(transaction *sql.Tx) (idempotency.Response, error) {
+        source, prepareErr := purchasing.PreparePaymentSubmission(submissionContext, transaction, purchaseID, occurredAt)
         if prepareErr != nil {
             return idempotency.Response{}, prepareErr
         }
         if request.AmountMinor != source.Purchase.TotalAmountMinor || request.CurrencyCode != source.Purchase.CurrencyCode {
             return idempotency.Response{}, ErrInvalidInput
         }
-        reference, storeErr := handler.store.Put(c.Request.Context(), EvidenceObject{
-            MediaType: request.MediaType, SizeBytes: int64(len(request.Data)), SHA256: request.SHA256,
-            Body: bytes.NewReader(request.Data),
+        reference, referenceErr := NewEvidenceReference()
+        if referenceErr != nil {
+            return idempotency.Response{}, referenceErr
+        }
+        if _, seekErr := request.Spool.Seek(0, io.SeekStart); seekErr != nil {
+            return idempotency.Response{}, fmt.Errorf("seek payment evidence: %w", seekErr)
+        }
+        stored, storeErr := handler.store.Put(submissionContext, EvidenceObject{
+            Reference: reference, MediaType: request.MediaType, SizeBytes: request.SizeBytes, SHA256: request.SHA256,
+            Body: request.Spool,
         })
         if storeErr != nil {
             return idempotency.Response{}, fmt.Errorf("store payment evidence: %w", storeErr)
         }
-        storedReference := strings.TrimSpace(reference)
-        keepStoredEvidence := false
-        defer func() {
-            if !keepStoredEvidence && storedReference != "" {
-                handler.cleanupEvidence(c.Request.Context(), storedReference)
-            }
-        }()
+        storedReference = reference
+        armed = true
+        if strings.TrimSpace(stored.Reference) != reference || stored.SizeBytes != request.SizeBytes {
+            return idempotency.Response{}, ErrStorageUnavailable
+        }
         paymentReference, referenceErr := NewReference(handler.randomSource())
         if referenceErr != nil {
             return idempotency.Response{}, referenceErr
@@ -155,17 +175,17 @@ func (handler *PublicHandler) submit(c *gin.Context) {
         submission, submissionErr := NewSubmission(SubmissionInput{
             Reference: paymentReference, EventID: source.Purchase.EventID, PayerPartyID: payerID,
             PurchaseID: source.Purchase.ID, AmountMinor: request.AmountMinor, CurrencyCode: request.CurrencyCode,
-            Evidence:    Evidence{Reference: storedReference, Filename: request.Filename, MediaType: request.MediaType, SizeBytes: int64(len(request.Data)), SHA256: request.SHA256},
+            Evidence:    Evidence{Reference: storedReference, Filename: request.Filename, MediaType: request.MediaType, SizeBytes: request.SizeBytes, SHA256: request.SHA256},
             SubmittedAt: occurredAt,
         })
         if submissionErr != nil {
             return idempotency.Response{}, submissionErr
         }
-        created, createErr := NewRepository(transaction).CreateSubmission(c.Request.Context(), submission)
+        created, createErr := NewRepository(transaction).CreateSubmission(submissionContext, submission)
         if createErr != nil {
             return idempotency.Response{}, createErr
         }
-        if outboxErr := outbox.Write(c.Request.Context(), transaction, outbox.Event{
+        if outboxErr := outbox.Write(submissionContext, transaction, outbox.Event{
             AggregateType: "Payment", AggregateID: created.ID, EventType: "PaymentEvidenceSubmitted",
             Payload: map[string]string{"payment_id": created.ID, "purchase_id": created.PurchaseID}, OccurredAt: created.SubmittedAt,
         }); outboxErr != nil {
@@ -175,13 +195,13 @@ func (handler *PublicHandler) submit(c *gin.Context) {
         if marshalErr != nil {
             return idempotency.Response{}, fmt.Errorf("marshal public payment response: %w", marshalErr)
         }
-        keepStoredEvidence = true
         return idempotency.Response{Status: http.StatusCreated, Body: body}, nil
     })
     if err != nil {
         writePublicPaymentError(c, handler.logger, err)
         return
     }
+    armed = false
     c.Data(response.Status, "application/json", response.Body)
 }
 
@@ -193,6 +213,12 @@ func decodePublicEvidence(c *gin.Context) (publicEvidenceRequest, error) {
     c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, publicEvidenceBodyLimit)
     reader := multipart.NewReader(c.Request.Body, parameters["boundary"])
     var result publicEvidenceRequest
+    keepSpool := false
+    defer func() {
+        if !keepSpool {
+            closeSpool(result.Spool)
+        }
+    }()
     seen := map[string]bool{}
     for {
         part, nextErr := reader.NextPart()
@@ -228,7 +254,7 @@ func decodePublicEvidence(c *gin.Context) (publicEvidenceRequest, error) {
                 return publicEvidenceRequest{}, ErrInvalidInput
             }
         case "evidence_file":
-            result, err = readEvidencePart(part, result)
+            result, err = readEvidencePart(c.Request.Context(), part, result)
             if err != nil {
                 return publicEvidenceRequest{}, err
             }
@@ -240,6 +266,7 @@ func decodePublicEvidence(c *gin.Context) (publicEvidenceRequest, error) {
     if !seen["amount_minor"] || !seen["currency_code"] || !seen["evidence_file"] {
         return publicEvidenceRequest{}, ErrInvalidInput
     }
+    keepSpool = true
     return result, nil
 }
 
@@ -259,37 +286,79 @@ func readTextPart(part *multipart.Part, maximum int64) (string, error) {
     return result, nil
 }
 
-func readEvidencePart(part *multipart.Part, result publicEvidenceRequest) (publicEvidenceRequest, error) {
+func readEvidencePart(ctx context.Context, part *multipart.Part, result publicEvidenceRequest) (publicEvidenceRequest, error) {
     defer part.Close()
     filename := strings.TrimSpace(path.Base(strings.ReplaceAll(part.FileName(), "\\", "/")))
     if filename == "" || filename == "." || utf8.RuneCountInString(filename) > MaxEvidenceFilename {
         return publicEvidenceRequest{}, ErrInvalidInput
     }
-    data, err := io.ReadAll(io.LimitReader(part, MaxEvidenceBytes+1))
+    spool, err := os.CreateTemp("", "payment-evidence-")
     if err != nil {
-        var tooLarge *http.MaxBytesError
-        if errors.As(err, &tooLarge) {
-            return publicEvidenceRequest{}, ErrEvidenceTooLarge
+        return publicEvidenceRequest{}, ErrStorageUnavailable
+    }
+    if err := spool.Chmod(0o600); err != nil || os.Remove(spool.Name()) != nil {
+        _ = spool.Close()
+        return publicEvidenceRequest{}, ErrStorageUnavailable
+    }
+    keep := false
+    defer func() {
+        if !keep {
+            _ = spool.Close()
         }
-        return publicEvidenceRequest{}, ErrInvalidInput
+    }()
+    hash := sha256.New()
+    sample, buffer := make([]byte, 0, 512), make([]byte, 32<<10)
+    source := io.LimitReader(part, MaxEvidenceBytes+1)
+    var size int64
+    for {
+        if err := ctx.Err(); err != nil {
+            return publicEvidenceRequest{}, err
+        }
+        read, readErr := source.Read(buffer)
+        if read > 0 {
+            size += int64(read)
+            if size > MaxEvidenceBytes {
+                return publicEvidenceRequest{}, ErrEvidenceTooLarge
+            }
+            if len(sample) < 512 {
+                take := min(512-len(sample), read)
+                sample = append(sample, buffer[:take]...)
+            }
+            if _, err := hash.Write(buffer[:read]); err != nil {
+                return publicEvidenceRequest{}, ErrInvalidInput
+            }
+            if _, err := spool.Write(buffer[:read]); err != nil {
+                return publicEvidenceRequest{}, ErrStorageUnavailable
+            }
+        }
+        if errors.Is(readErr, io.EOF) {
+            break
+        }
+        if readErr != nil {
+            return publicEvidenceRequest{}, ErrInvalidInput
+        }
     }
-    if len(data) == 0 {
+    if size == 0 {
         return publicEvidenceRequest{}, ErrInvalidInput
-    }
-    if int64(len(data)) > MaxEvidenceBytes {
-        return publicEvidenceRequest{}, ErrEvidenceTooLarge
     }
     declared, _, err := mime.ParseMediaType(part.Header.Get("Content-Type"))
-    detected := http.DetectContentType(data)
+    detected := http.DetectContentType(sample)
     if err != nil || !validMediaType(declared) || declared != detected {
         return publicEvidenceRequest{}, ErrUnsupportedMedia
     }
-    digest := sha256.Sum256(data)
     result.Filename = filename
     result.MediaType = detected
-    result.Data = data
-    result.SHA256 = digest[:]
+    result.Spool = spool
+    result.SizeBytes = size
+    result.SHA256 = hash.Sum(nil)
+    keep = true
     return result, nil
+}
+
+func closeSpool(file *os.File) {
+    if file != nil {
+        _ = file.Close()
+    }
 }
 
 func purchaseBearer(request *http.Request) (string, error) {
@@ -327,8 +396,16 @@ func (handler *PublicHandler) randomSource() io.Reader {
 }
 
 func (handler *PublicHandler) cleanupEvidence(ctx context.Context, reference string) {
-    if cleanupErr := handler.store.Delete(context.WithoutCancel(ctx), reference); cleanupErr != nil && handler.logger != nil {
+    cleanupContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+    defer cancel()
+    if cleanupErr := handler.store.Delete(cleanupContext, reference); cleanupErr != nil && handler.logger != nil {
         handler.logger.Warn("Payment evidence cleanup failed", "request_id", httpx.RequestID(ctx), "error_type", fmt.Sprintf("%T", cleanupErr))
+    }
+}
+
+func (handler *PublicHandler) cleanupAfterSubmission(ctx context.Context, armed bool, reference string, result error) {
+    if armed && !errors.Is(result, database.ErrCommitUncertain) {
+        handler.cleanupEvidence(ctx, reference)
     }
 }
 
@@ -353,7 +430,7 @@ func writePublicPaymentError(c *gin.Context, logger *slog.Logger, err error) {
         httpx.WriteError(c, http.StatusConflict, "quota_unavailable", "participant quota is unavailable", requestID, nil)
     case errors.Is(err, idempotency.ErrConflict), errors.Is(err, idempotency.ErrUnavailableReplay):
         httpx.WriteError(c, http.StatusConflict, "idempotency_conflict", "idempotency key conflicts with the request", requestID, nil)
-    case errors.Is(err, ErrStorageUnavailable), httpx.IsDependencyUnavailable(err):
+    case errors.Is(err, database.ErrCommitUncertain), errors.Is(err, ErrStorageCollision), errors.Is(err, ErrStorageUnavailable), httpx.IsDependencyUnavailable(err):
         logPublicPaymentError(logger, slog.LevelWarn, requestID, err)
         httpx.WriteError(c, http.StatusServiceUnavailable, "service_unavailable", "service temporarily unavailable", requestID, nil)
     default:
